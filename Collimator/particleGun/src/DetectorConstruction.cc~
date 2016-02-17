@@ -1,0 +1,241 @@
+#include "DetectorConstruction.hh"
+#include "WireChamberParametrization.hh"
+
+#include "G4Box.hh"
+#include "G4Tubs.hh"
+#include "G4LogicalVolume.hh"
+#include "G4PVPlacement.hh"
+#include "G4PVParameterised.hh"
+#include "G4SystemOfUnits.hh"
+#include "G4Material.hh"
+
+// For defining silicon and helium from the database
+#include "G4NistManager.hh"
+
+
+#include "G4VisAttributes.hh"
+#include "G4Colour.hh"
+
+DetectorConstruction::DetectorConstruction()
+{
+}
+
+DetectorConstruction::~DetectorConstruction()
+{
+}
+
+G4VPhysicalVolume* DetectorConstruction::Construct()
+{
+
+
+// -------    Material definitions ------------- //
+
+   G4double z, a, density, fractionmass;
+   G4int ncomponents;
+   G4Material* Silicon = new G4Material("Silicon", z=14., a=28.0855*g/mole, density=2.330*g/cm3);
+   G4Material* Helium = new G4Material("Helium", z = 2, a=4.001*g/mole, density=0.0001785*g/cm3);
+   
+   G4Element* Cr = new G4Element("Chrome", "Cr", z=25, a=  51.996*g/mole);
+   G4Element* Fe = new G4Element("Iron"  , "Fe", z=26, a=  55.845*g/mole);
+   G4Element* Co = new G4Element("Cobalt", "Co", z=27, a=  58.933*g/mole);
+   G4Element* Ni = new G4Element("Nickel", "Ni", z=28, a=  58.693*g/mole);
+   G4Element* W  = new G4Element("Tungsten","W", z=74, a= 183.850*g/mole);
+   G4Element* H  = new G4Element("Hydrogen","H", z=1, a= 1.01*g/mole);
+   G4Element* C  = new G4Element("Carbon","C", z=6, a= 12.01*g/mole);
+   G4Element* O  = new G4Element("Oxygen","O", z=8, a= 16.00*g/mole);
+   G4Element* Al = new G4Element("Aluminum","Al", z=13, 26.98*g/mole);
+   G4Element* N = new G4Element("Nitrogen","N", z=7, 14.01*g/mole);
+   
+   G4Material* Havar = new G4Material("Havar", density= 8.3*g/cm3, ncomponents=5);
+   Havar->AddElement(Cr, fractionmass=0.1785);
+   Havar->AddElement(Fe, fractionmass=0.1822);
+   Havar->AddElement(Co, fractionmass=0.4452);
+   Havar->AddElement(Ni, fractionmass=0.1310);
+   Havar->AddElement(W , fractionmass=0.0631);
+   
+   G4Material* Nitrogengas = new G4Material("Nitrogengas", density= 1.290*mg/cm3, ncomponents=1);
+   Nitrogengas->AddElement(N, fractionmass=1.0);
+   
+   G4Material* Air = new G4Material("Air", density= 1.25053*mg/cm3, ncomponents=2);
+   Air->AddElement(N, fractionmass=0.70);
+   Air->AddElement(O, fractionmass=0.30);
+
+   G4Material* Mylar = new G4Material("Mylar", density= 1.38*g/cm3, ncomponents=3);
+   Mylar->AddElement(C,fractionmass=0.6250);
+   Mylar->AddElement(H,fractionmass=0.0417);
+   Mylar->AddElement(O,fractionmass=0.3333);
+   
+   G4Material* PureAluminum = new G4Material("PureAluminum", density= 2.70*g/cm3, ncomponents=1);
+   PureAluminum->AddElement(Al,fractionmass=1.00);
+
+// ----------- Definitions of all dimensions -------------//
+// Currently unused values commented out to save warnings //
+
+   // Helium world box
+   G4double WorldDimX = 1.0*m, WorldDimY = 1.0*m, WorldDimZ = 1.0*m;
+
+   // Actual wire chamber
+   G4double WireChamberDimX = 0.003*mm, WireChamberDimY=20*cm, WireChamberDimZ = 20*cm;
+
+   // Size of the wire chamber system
+   G4double WireChamberSystemDimX = 14*cm, WireChamberSystemDimY = 35*cm,
+            WireChamberSystemDimZ = 90*cm;
+  
+
+// ----------- Construct a world box made of helium --------------- //
+   G4Box* solidWorld = new G4Box("world", WorldDimX/2, WorldDimY/2, WorldDimZ/2);
+   G4LogicalVolume* logicWorld = new G4LogicalVolume(solidWorld, Nitrogengas, "World", 0, 0, 0);
+   G4PVPlacement* physWorld = new G4PVPlacement(0,
+				  G4ThreeVector(0,0,0),
+				  logicWorld,
+				  "World",
+				  0,
+				  false,
+				  0);
+
+// ----------- Since the world volume cannot contain both replicated volumes and regular volumes,
+
+
+  // Wire chamber Tracker//
+   G4double WireChamberPosX = 10.0*cm, WireChamberPosY = 0*cm, WireChamberPosZ = 0*cm;
+
+  G4Box* solidTracker = new G4Box("tracker", WireChamberSystemDimX/2,
+					      WireChamberSystemDimY/2,
+					      WireChamberSystemDimZ/2);
+
+   G4LogicalVolume* logicTracker = new G4LogicalVolume(solidTracker,
+						       Nitrogengas,
+						       "Tracker");
+   G4PVPlacement* physTracker = new G4PVPlacement(0,
+			 G4ThreeVector(WireChamberPosX, WireChamberPosY, WireChamberPosZ),
+				    logicTracker,
+				    "Tracker",
+				    logicWorld,
+				    false,
+  				    0);
+
+  
+ logicTracker->SetVisAttributes(G4VisAttributes::GetInvisible());						
+
+
+// ----------- Construct the wire chamber solid and logical volumes. Wire chambers are nearly
+
+
+   G4int NumOfWires = 80;
+   G4ThreeVector firstPosition(0*cm, 0*cm, -10*cm);
+   G4double spacingZ = 0.5*cm;
+   G4double WireDiameter = 1.0*mm;
+   G4double WCPosTracker =1.6*cm;
+
+  /* G4Box* solidWireChamber = new G4Box("WireChamber", WireDiameter/2, WireChamberDimY/2,
+WireDiameter/2);*/
+
+    G4Box* solidWireChamber = new G4Box("WireChamber", 12.0*cm/2, WireChamberDimY/2, WireChamberDimZ/2);
+    G4LogicalVolume* logicWireChamber = new G4LogicalVolume(solidWireChamber, Air, "WireChamber", 0,0,0);//Helium
+       
+    fWireChamber = new G4PVPlacement(0,
+		                     G4ThreeVector(-WCPosTracker, 0,0),
+					   logicWireChamber,
+					   "ChamberInnerRight",
+						logicTracker,
+						false,
+						0);
+ 
+					     
+   G4VisAttributes* BoxVisAttWhite = new G4VisAttributes(G4Colour(1.0, 1.0, 1.0));
+   G4VisAttributes* BoxVisAttBlue = new G4VisAttributes(G4Colour(0.0, 0.0, 1.0));
+   BoxVisAttWhite->SetForceSolid(TRUE);
+   BoxVisAttBlue->SetForceSolid(TRUE);
+   logicWireChamber->SetVisAttributes(BoxVisAttWhite);
+
+   // ---------- Construct the Havar Tube and make it Cyan ------------------//
+   
+  // ---------- Construct the Mylar on the right and make it red ------------------//
+   G4double MylarDimX1 = 0.00635*mm,
+            MylarDimX2 = 0.002*mm,
+            MylarDimY = 20.0*cm, 
+            MylarDimZ = 20.0*cm;
+
+    G4double MylarFilmPosX = 0.52*cm, MylarFilmPosX2 =-0.52*cm, MylarFilmPosY = 0*cm, MylarFilmPosZ = 0*cm;
+   
+    G4Box* Mylarfilm = new G4Box("mylar", MylarDimX1/2,MylarDimY/2, MylarDimZ/2);
+
+    G4LogicalVolume* logicMylarFilm = new G4LogicalVolume(
+					       Mylarfilm, 
+					       Mylar,
+					       "MylarFilm", 
+					       0,0,0);
+ 
+   fMylarFilm = new G4PVPlacement(0,
+		                 G4ThreeVector(MylarFilmPosX-WCPosTracker, MylarFilmPosY, MylarFilmPosZ),
+					   logicMylarFilm,
+					   "MFilmPosTInnerR",
+						logicTracker,
+						false,
+                                               0);
+
+
+  G4Box* Mylarfilm2 = new G4Box("mylar2", MylarDimX2/2,
+				          MylarDimY/2, MylarDimZ/2);
+
+  G4LogicalVolume* logicMylarFilm2 = new G4LogicalVolume(
+					       Mylarfilm2, 
+					       Mylar,
+					       "MylarFilm2", 
+					       0,0,0);						
+   fMylarFilm2 = new G4PVPlacement(0,
+		G4ThreeVector(MylarFilmPosX2-WCPosTracker, MylarFilmPosY, MylarFilmPosZ),
+					   logicMylarFilm2,
+					   "MFilmPreVInnerR",
+				           logicTracker,
+      				           false,
+                                            0);
+					
+  
+  
+
+   G4VisAttributes* BoxVisAttRed = new G4VisAttributes(G4Colour(1., 0., 0.));
+   BoxVisAttRed->SetForceSolid(TRUE);
+   logicMylarFilm->SetVisAttributes(BoxVisAttRed);
+   logicMylarFilm2->SetVisAttributes(BoxVisAttRed);
+   
+
+// ---------- Construct the Right seven silicon detector and make it blue ------------------//
+   // Silicon detector Position
+   G4double SiliconDetectorPosX = 16*cm, SiliconDetectorPosY = 0*cm, 
+            SiliconDetectorPosZ = 0*cm;
+
+   // Silicon Detector
+   G4double SiliconDetectorDimX = 10.0*mm, 
+            SiliconDetectorDimY = 20.0*cm, 
+            SiliconDetectorDimZ = 20.0*cm,
+            SiliconSpace = 1.0*cm;
+
+// -----//----- Construct the Right 0  silicon detector and make it blue --------//----------//
+   
+  G4Box* solidSiliconDetector0R = new G4Box("siliconDetector0R", SiliconDetectorDimX/2,
+				           SiliconDetectorDimY/2, SiliconDetectorDimZ/2);
+
+   G4LogicalVolume* logicSiliconDetector0R = new G4LogicalVolume(
+					       solidSiliconDetector0R, 
+					       Silicon,
+					       "SiliconDetector0R", 
+					       0,0,0);
+ 
+   fSiliconDetector0R = new G4PVPlacement(0,
+		G4ThreeVector(SiliconDetectorPosX, SiliconDetectorPosY, SiliconDetectorPosZ),
+					   logicSiliconDetector0R,
+					   "SDetector",
+						logicWorld,
+						false,
+						0);
+
+
+   G4VisAttributes* BoxVisAttGreen = new G4VisAttributes(G4Colour(0., 1., 0.));
+   BoxVisAttGreen->SetForceSolid(TRUE);
+   logicSiliconDetector0R->SetVisAttributes(BoxVisAttGreen); 
+
+
+  return physWorld;
+  
+}  

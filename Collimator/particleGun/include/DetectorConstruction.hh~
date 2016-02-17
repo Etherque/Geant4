@@ -1,0 +1,85 @@
+#ifndef DETECTORCONSTRUCTION_HH
+#define DETECTORCONSTRUCTION_HH 1
+
+#include "G4VUserDetectorConstruction.hh"
+#include "globals.hh"
+
+class G4LogicalVolume;
+class G4VPhysicalVolume;
+class G4VPVParameterisation;
+
+class DetectorConstruction : public G4VUserDetectorConstruction {
+
+public:
+  
+  // Constructor
+  DetectorConstruction();
+  
+  // Destructor
+  virtual ~DetectorConstruction();
+  
+  // Method
+  virtual G4VPhysicalVolume* Construct();
+
+  //G4VPhysicalVolume* GetSiliconDetector() { return fSiliconDetector; }
+  //G4VPhysicalVolume* GetWireChamber() { return fWireChamber; }
+  
+private:
+
+  // Helper methods
+  void DefineMaterials();
+  void SetupGeometry();
+
+  // World logical and physical volumes
+  G4LogicalVolume*   fpWorldLogical;
+  G4VPhysicalVolume* fpWorldPhysical;
+
+  // Pointers to the silicon detector and wire chamber detector
+  
+  G4VPhysicalVolume* fHavarTube;
+  G4VPhysicalVolume* fBottomCub;
+  G4VPhysicalVolume* fTopCub;
+  G4VPhysicalVolume* fFrontRing;
+  G4VPhysicalVolume* fBackRing;
+  G4VPhysicalVolume* fFrontTopCub;
+  G4VPhysicalVolume* fFrontBottomCub;
+  G4VPhysicalVolume* fBackTopCub;
+  G4VPhysicalVolume* fBackBottomCub;
+
+
+  G4VPhysicalVolume* fWireChamber;
+  G4VPhysicalVolume* fWireChamber2;
+  G4VPhysicalVolume* fWireChamberleft;
+  G4VPhysicalVolume* fWireChamberleft2;
+  G4VPhysicalVolume* fMylarFilm;
+  G4VPhysicalVolume* fMylarFilm2;
+  G4VPhysicalVolume* fMylarFilmR1;
+  G4VPhysicalVolume* fMylarFilmR2;
+  G4VPhysicalVolume* fMylarFilmleft;
+  G4VPhysicalVolume* fMylarFilmleft2;
+  G4VPhysicalVolume* fMylarFilmleftL1;
+
+  G4VPhysicalVolume* fSiliconDetector0R;
+  G4VPhysicalVolume* fSiliconDetector1R;
+  G4VPhysicalVolume* fSiliconDetector2R;
+  G4VPhysicalVolume* fSiliconDetector3R;
+  G4VPhysicalVolume* fSiliconDetector4R;
+  G4VPhysicalVolume* fSiliconDetector5R;
+  G4VPhysicalVolume* fSiliconDetector6R;
+  
+  G4VPhysicalVolume* fSiliconDetector0L;
+  G4VPhysicalVolume* fSiliconDetector1L;
+  G4VPhysicalVolume* fSiliconDetector2L;
+  G4VPhysicalVolume* fSiliconDetector3L;
+  G4VPhysicalVolume* fSiliconDetector4L;
+  G4VPhysicalVolume* fSiliconDetector5L;
+  G4VPhysicalVolume* fSiliconDetector6L;
+
+  G4VPVParameterisation* WireChamberParam;
+  G4VPVParameterisation* MylarParam;
+
+  //Parser and input gdml file
+  G4String fReadFile;
+};
+
+#endif

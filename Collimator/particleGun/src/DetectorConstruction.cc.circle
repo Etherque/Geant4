@@ -1,0 +1,494 @@
+#include "DetectorConstruction.hh"
+#include "WireChamberParametrization.hh"
+
+#include "G4SubtractionSolid.hh"
+#include "G4Box.hh"
+#include "G4Tubs.hh"
+#include "G4LogicalVolume.hh"
+#include "G4PVPlacement.hh"
+#include "G4PVParameterised.hh"
+#include "G4SystemOfUnits.hh"
+#include "G4Material.hh"
+#include "G4VSolid.hh"
+
+// For defining silicon and helium from the database
+#include "G4NistManager.hh"
+
+
+#include "G4VisAttributes.hh"
+#include "G4Colour.hh"
+
+DetectorConstruction::DetectorConstruction()
+{
+}
+
+DetectorConstruction::~DetectorConstruction()
+{
+}
+
+G4VPhysicalVolume* DetectorConstruction::Construct()
+{
+
+
+// -------    Material definitions ------------- //
+
+   G4double z, a, density, fractionmass;
+   G4int ncomponents;
+   G4Material* Silicon = new G4Material("Silicon", z=14., a=28.0855*g/mole, density=2.330*g/cm3);
+   G4Material* Helium = new G4Material("Helium", z = 2, a=4.001*g/mole, density=0.0001785*g/cm3);
+   
+   G4Element* Cr = new G4Element("Chrome", "Cr", z=25, a=  51.996*g/mole);
+   G4Element* Fe = new G4Element("Iron"  , "Fe", z=26, a=  55.845*g/mole);
+   G4Element* Co = new G4Element("Cobalt", "Co", z=27, a=  58.933*g/mole);
+   G4Element* Ni = new G4Element("Nickel", "Ni", z=28, a=  58.693*g/mole);
+   G4Element* W  = new G4Element("Tungsten","W", z=74, a= 183.850*g/mole);
+   G4Element* H  = new G4Element("Hydrogen","H", z=1, a= 1.01*g/mole);
+   G4Element* C  = new G4Element("Carbon","C", z=6, a= 12.01*g/mole);
+   G4Element* O  = new G4Element("Oxygen","O", z=8, a= 16.00*g/mole);
+   G4Element* Al = new G4Element("Aluminum","Al", z=13, 26.98*g/mole);
+   
+   G4Material* Havar = new G4Material("Havar", density= 8.3*g/cm3, ncomponents=5);
+   Havar->AddElement(Cr, fractionmass=0.1785);
+   Havar->AddElement(Fe, fractionmass=0.1822);
+   Havar->AddElement(Co, fractionmass=0.4452);
+   Havar->AddElement(Ni, fractionmass=0.1310);
+   Havar->AddElement(W , fractionmass=0.0631);
+   
+   G4Material* Mylar = new G4Material("Mylar", density= 1.38*g/cm3, ncomponents=3);
+   Mylar->AddElement(C,fractionmass=0.6250);
+   Mylar->AddElement(H,fractionmass=0.0417);
+   Mylar->AddElement(O,fractionmass=0.3333);
+   
+   G4Material* PureAluminum = new G4Material("PureAluminum", density= 2.70*g/cm3, ncomponents=1);
+   PureAluminum->AddElement(Al,fractionmass=1.00);
+
+// ----------- Definitions of all dimensions -------------//
+// Currently unused values commented out to save warnings //
+
+   // Helium world box
+   G4double WorldDimX = 1.0*m, WorldDimY = 1.0*m, WorldDimZ = 1.0*m;
+
+   // Actual wire chamber
+   G4double WireChamberDimX = 0.003*mm, WireChamberDimY=20*cm, WireChamberDimZ = 70*cm;
+
+   // Size of the wire chamber system
+   G4double WireChamberSystemDimX = 1.5*cm, WireChamberSystemDimY = 35*cm,
+            WireChamberSystemDimZ = 90*cm;
+  
+
+// ----------- Construct a world box made of helium --------------- //
+   G4Box* solidWorld = new G4Box("world", WorldDimX/2, WorldDimY/2, WorldDimZ/2);
+   G4LogicalVolume* logicWorld = new G4LogicalVolume(solidWorld, Helium, "World", 0, 0, 0);
+   G4PVPlacement* physWorld = new G4PVPlacement(0,
+				  G4ThreeVector(0,0,0),
+				  logicWorld,
+				  "World",
+				  0,
+				  false,
+				  0);
+
+// ----------- Since the world volume cannot contain both replicated volumes and regular volumes,
+
+
+  // Wire chamber Tracker//
+   G4double WireChamberPosX = 3.0*cm, WireChamberPosY = 0*cm, WireChamberPosZ = 0*cm;
+
+  G4Box* solidTracker = new G4Box("tracker", WireChamberSystemDimX/2,
+					      WireChamberSystemDimY/2,
+					      WireChamberSystemDimZ/2);
+
+   G4LogicalVolume* logicTracker = new G4LogicalVolume(solidTracker,
+						       Helium,
+						       "Tracker");
+   //G4RotationMatrix* rotateTracker = new G4RotationMatrix();
+   //rotateTracker->rotateY(-4.5*deg);
+
+   G4PVPlacement* physTracker = new G4PVPlacement(0,
+			 G4ThreeVector(WireChamberPosX, WireChamberPosY, WireChamberPosZ),
+				    logicTracker,
+				    "Tracker",
+				    logicWorld,
+				    false,
+  				    0);
+
+/////////////////////////////*************************************//////////////////////////////////
+  G4Box* solidTrackerleft = new G4Box("tracker", WireChamberSystemDimX/2,
+					      WireChamberSystemDimY/2,
+					      WireChamberSystemDimZ/2);
+   G4LogicalVolume* logicTrackerleft = new G4LogicalVolume(solidTrackerleft,
+						       Helium,
+						       "Tracker");
+   G4PVPlacement* physTrackerleft = new G4PVPlacement(0,
+			 G4ThreeVector(-WireChamberPosX, WireChamberPosY, WireChamberPosZ),
+				    logicTrackerleft,
+				    "Tracker",
+				    logicWorld,
+				    false,
+  				    0);
+  
+ logicTracker->SetVisAttributes(G4VisAttributes::GetInvisible());						
+ logicTrackerleft->SetVisAttributes(G4VisAttributes::GetInvisible());
+ 
+   G4VisAttributes* BoxVisAttWhite = new G4VisAttributes(G4Colour(1.0, 1.0, 1.0));
+   G4VisAttributes* BoxVisAttBlue = new G4VisAttributes(G4Colour(0.0, 0.0, 1.0));
+   BoxVisAttWhite->SetForceSolid(TRUE);
+   BoxVisAttBlue->SetForceSolid(TRUE);
+
+// ----------- Construct the wire chamber solid and logical volumes. Wire chambers are nearly
+
+//   G4double WCPosTracker =1.0*cm;
+   G4double colimLen = 2.5*cm;
+   G4double diameter = 2.0 *mm;
+   G4double colimHei = 15.0*mm;
+   G4double colimZ = 70.0*cm;
+   
+   G4double distance = 3.0 *mm;
+   G4int Ymax = (int)(colimHei/(2*distance));
+   G4int Zmax = (int)(colimZ/(2*distance));
+
+   G4VSolid* solidColimator = new G4Box("BoxCol", colimLen/2,
+                                                colimHei/2,
+                                                colimZ/2);
+ 
+
+   G4VSolid* solidTubs = new G4Tubs("Colimator",                                               
+                                   0, 
+                                   diameter/2,
+                                   colimLen/2 + 1*mm,
+                                   0*deg, 
+                                   360*deg);
+
+   G4RotationMatrix* rotationMatrix = new G4RotationMatrix();
+   rotationMatrix->rotateY(94.5*deg);
+
+   G4VSolid* subtractL = new G4SubtractionSolid("Box-Tubs",
+                                                  solidColimator,      
+                                                  solidTubs,
+                                                  rotationMatrix,
+                                                  G4ThreeVector(0 *cm, 0*diameter, (0 + (0 % 2) * 0.5)*diameter));
+   for(G4int y = -Ymax; y <= Ymax; y++) {
+       for(G4int z = -Zmax; z <= Zmax; z++) {
+              subtractL = new G4SubtractionSolid("Box-Tubs",
+                                                  subtractL, 
+                                                  solidTubs,
+                                                  rotationMatrix,
+                                                  G4ThreeVector(0 *cm, y*diameter, (z + (y % 2) * 0.5)*diameter)); 
+      }   
+   }
+
+   G4LogicalVolume* logicMergeL = new G4LogicalVolume(subtractL,
+                                                     PureAluminum,
+                                                     "WireChamber",
+                                                      0,0,0);//Helium
+  
+  
+   fWireChamber = new G4PVPlacement(0,
+                                    G4ThreeVector(-3 *cm, 0*diameter, 0*diameter),
+                                    logicMergeL,
+                                    "Colimators",
+                                     logicWorld,
+                                     false,
+                                     0);
+
+   G4RotationMatrix* rotationMatrix2 = new G4RotationMatrix();
+   rotationMatrix2->rotateY(85.5*deg);
+   
+   G4VSolid* subtract = new G4SubtractionSolid("Box-Tubs",
+                                                  solidColimator,      
+                                                  solidTubs,
+                                                  rotationMatrix2,
+                                                  G4ThreeVector(0 *cm, 0*diameter, (0 + (0 % 2) * 0.5)*diameter));
+
+   
+   for(G4int y = -Ymax; y <= Ymax; y++) {
+       for(G4int z = -Zmax; z <= Zmax; z++) {
+              subtract = new G4SubtractionSolid("Box-Tubs",
+                                                  subtract, 
+                                                  solidTubs,
+                                                  rotationMatrix2,
+                                                  G4ThreeVector(0 *cm, y*distance, (z + (y % 2) * 0.5)*distance)); 
+      }   
+   }
+   
+   G4LogicalVolume* logicMerge = new G4LogicalVolume(subtract,
+                                                     PureAluminum,
+                                                     "WireChamber",
+                                                      0,0,0);//Helium
+
+   fWireChamber = new G4PVPlacement(0,
+                                    G4ThreeVector(0 *cm, 0*diameter, 0*diameter),
+                                    logicMerge,
+                                    "Colimators",
+                                     logicTracker,
+                                     false,
+                                     0);
+
+   logicMerge->SetVisAttributes(BoxVisAttWhite);
+
+   //--------------------------------fake detector--------------------------//
+   G4double fdetX = 0.1 *cm;
+   G4double fdetY = colimHei;
+   G4double fdetZ = colimZ;
+   G4double fdetPos = 4.35*cm;
+
+   G4Box* fakeDet = new G4Box("fakeDet", 
+                              fdetX/2, 
+                              fdetY/2, 
+                              fdetZ/2);
+   
+   G4LogicalVolume* logicfdet = new G4LogicalVolume(fakeDet, 
+                                                    Helium, 
+                                                    "FakeDet", 
+                                                    0,0,0);//Helium
+   
+   fDetector = new G4PVPlacement(0,
+	                        G4ThreeVector(fdetPos, 0,-0.05*cm),
+                   		logicfdet,
+			        "FDetector",
+				logicWorld,
+				false,
+				0);
+
+   
+   G4LogicalVolume* logicfNdet = new G4LogicalVolume(fakeDet, 
+                                                    Helium, 
+                                                    "FakeDet", 
+                                                    0,0,0);//Helium
+   
+   fNDetector = new G4PVPlacement(0,
+	                        G4ThreeVector(-fdetPos, 0,-0.05*cm),
+                   		logicfNdet,
+			        "FDetector",
+				logicWorld,
+				false,
+				0);
+  
+   G4VisAttributes* BoxVisAttGreen = new G4VisAttributes(G4Colour(0., 1., 0.));
+   BoxVisAttGreen->SetForceSolid(TRUE);
+   logicfdet-> SetVisAttributes(BoxVisAttGreen);
+   logicfNdet-> SetVisAttributes(BoxVisAttGreen);
+
+   for(G4double origin = -30.0*cm; origin <= 35*cm; origin += 10.1*cm) {
+   // ---------- Construct the Havar Tube and make it Cyan ------------------//
+   G4double HavarTubeThickness = 0.0025*mm, HavarTubeRadius = 6.5*mm, HavarTubeLength = 10.0*cm/2,
+            startAngle = 0.*deg, spanningAngle = 360.*deg;
+   G4double HavarTubePosX = 0, HavarTubePosY = 0, HavarTubePosZ = 0 - origin;
+
+   G4Tubs* HavarTube = new G4Tubs("HavarTube",
+                                   HavarTubeRadius-HavarTubeThickness,
+                                   HavarTubeRadius,
+                                   HavarTubeLength,
+                                   startAngle,
+                                   spanningAngle);
+ 
+   G4LogicalVolume* logicHavarTube = new G4LogicalVolume(HavarTube,
+                                                         Havar,
+                                                         "HavarTubefilm",
+                                                         0,0,0);
+
+   fHavarTube = new G4PVPlacement(0,
+                                  G4ThreeVector(HavarTubePosX, HavarTubePosY, HavarTubePosZ),
+                                  logicHavarTube,
+                                 "HavarTube",
+                                  logicWorld,
+                                  false,
+                                  0);
+
+   G4VisAttributes* BoxVisAttCyan = new G4VisAttributes(G4Colour(0., 1.0, 1.0));
+   BoxVisAttCyan->SetForceSolid(TRUE);
+   logicHavarTube->SetVisAttributes(BoxVisAttCyan); 
+
+ //************************************************************ Construct the AluminumTube Frame and make it White*********************************************************************//
+   
+                       
+    //-------------------bottom Cuboid--------------------------------------//  
+   G4double BottomCubDimX = 16*mm, BottomCubDimY = 7.5*mm, BottomCubDimZ= 100*mm;
+   G4double BottomCubPosX = 0, BottomCubPosY = -38*mm, BottomCubPosZ = 0 - origin;
+  
+   G4Box* BottomCub = new G4Box("AlBottomCuboid", BottomCubDimX/2,BottomCubDimY/2, BottomCubDimZ/2);
+   
+   G4LogicalVolume* logicBottomCub = new G4LogicalVolume(
+					       BottomCub, 
+					       PureAluminum,
+					       "BottomCubiod", 
+					       0,0,0);
+   fBottomCub = new G4PVPlacement(0,
+		                 G4ThreeVector(BottomCubPosX, BottomCubPosY, BottomCubPosZ),
+			         logicBottomCub,
+		       	         "BottomCub",
+				 logicWorld,
+		 		 false,
+                                  0);  
+  G4VisAttributes* BoxVisAttGrey = new G4VisAttributes(G4Colour(0.5, 0.5, 0.5));
+  BoxVisAttGrey->SetForceSolid(TRUE);
+  logicBottomCub->SetVisAttributes(BoxVisAttGrey);
+  
+  //-------------------top Cuboid--------------------------------------//  
+   G4double TopCubDimX = 16*mm, TopCubDimY = 7.5*mm, TopCubDimZ= 100*mm;
+   G4double TopCubPosX = 0, TopCubPosY = 38*mm, TopCubPosZ = 0 - origin;
+   
+   G4Box* TopCub = new G4Box("AlTopCuboid", TopCubDimX/2,TopCubDimY/2, TopCubDimZ/2);
+   
+   G4LogicalVolume* logicTopCub = new G4LogicalVolume(
+					       TopCub, 
+					       PureAluminum,
+					       "TopCubiod", 
+					       0,0,0);
+   fTopCub = new G4PVPlacement(0,
+		                 G4ThreeVector(TopCubPosX, TopCubPosY, TopCubPosZ),
+			         logicTopCub,
+		       	         "TopCub",
+				 logicWorld,
+		 		 false,
+                                  0);  
+  
+  logicTopCub->SetVisAttributes(BoxVisAttGrey);
+  
+  //-----------------------Front Ring----------------------------------//
+  G4double FrontInnerRadius = 6.5*mm, FrontOutsideRadius = 11.5*mm, FrontThickness = 5*mm;
+  
+   G4double FrontPosX = 0, FrontPosY = 0, FrontPosZ = HavarTubeLength-FrontThickness/2 - origin;
+
+   G4Tubs* FrontRing = new G4Tubs("AlFrontRing",
+                                   FrontInnerRadius,
+                                   FrontOutsideRadius,
+                                   FrontThickness,
+                                   startAngle,
+                                   spanningAngle);
+ 
+   G4LogicalVolume* logicFrontRing = new G4LogicalVolume(FrontRing,
+                                                         PureAluminum,
+                                                         "FrontRingFrame",
+                                                         0,0,0);
+
+   fFrontRing = new G4PVPlacement(0,
+                                  G4ThreeVector(FrontPosX, FrontPosY, FrontPosZ),
+                                  logicFrontRing,
+                                 "FrontRing",
+                                  logicWorld,
+                                  false,
+                                  0);
+  
+  logicFrontRing->SetVisAttributes(BoxVisAttGrey);   
+
+//-----------------------Back Ring----------------------------------//
+  G4double BackInnerRadius = 6.5*mm, BackOutsideRadius = 11.5*mm, BackThickness = 5*mm;
+  
+   G4double BackPosX = 0, BackPosY = 0, BackPosZ = -HavarTubeLength+BackThickness/2 - origin;
+
+   G4Tubs* BackRing = new G4Tubs("AlBackRing",
+                                   BackInnerRadius,
+                                   BackOutsideRadius,
+                                   BackThickness,
+                                   startAngle,
+                                   spanningAngle);
+ 
+   G4LogicalVolume* logicBackRing = new G4LogicalVolume(BackRing,
+                                                         PureAluminum,
+                                                         "BackRingFrame",
+                                                         0,0,0);
+
+   fBackRing = new G4PVPlacement(0,
+                                  G4ThreeVector(BackPosX, BackPosY, BackPosZ),
+                                  logicBackRing,
+                                 "BackRing",
+                                  logicWorld,
+                                  false,
+                                  0);
+  
+  logicBackRing->SetVisAttributes(BoxVisAttGrey);
+
+  //--------------Front Top Cubiod ----------------------//
+  G4double FrontTopCubDimX = 5*mm, FrontTopCubDimY = 26.5*mm, FrontTopCubDimZ = 5*mm;
+  
+  G4double FrontTopCubPosX = 0, FrontTopCubPosY = 24.75*mm, FrontTopCubPosZ = FrontPosZ;
+  
+  G4Box* FrontTopCub = new G4Box("AlFrontTopCub",FrontTopCubDimX/2, FrontTopCubDimY/2, FrontTopCubDimZ/2);
+   
+  G4LogicalVolume* logicFrontTopCub = new G4LogicalVolume(FrontTopCub,
+                                                          PureAluminum,
+                                                          "FrontTopCubFrame",
+                                                          0,0,0);
+  fFrontTopCub = new G4PVPlacement(0,
+                                   G4ThreeVector(FrontTopCubPosX, FrontTopCubPosY, FrontTopCubPosZ),
+                                   logicFrontTopCub,
+                                   "FrontTopCub",
+                                   logicWorld,
+                                  false,
+                                  0);                    
+  
+  logicFrontTopCub->SetVisAttributes(BoxVisAttGrey);
+
+   //--------------Front Bottom Cubiod ----------------------//
+  G4double FrontBottomCubDimX = 5*mm, FrontBottomCubDimY = 26.5*mm, FrontBottomCubDimZ = 5*mm;
+  
+  G4double FrontBottomCubPosX = 0, FrontBottomCubPosY = -24.75*mm, FrontBottomCubPosZ = FrontPosZ;
+  
+  G4Box* FrontBottomCub = new G4Box("AlFrontBottomCub",FrontBottomCubDimX/2, FrontBottomCubDimY/2, FrontBottomCubDimZ/2);
+   
+  G4LogicalVolume* logicFrontBottomCub = new G4LogicalVolume(FrontBottomCub,
+                                                          PureAluminum,
+                                                          "FrontBottomCubFrame",
+                                                          0,0,0);
+  fFrontBottomCub = new G4PVPlacement(0,
+                                   G4ThreeVector(FrontBottomCubPosX, FrontBottomCubPosY, FrontBottomCubPosZ),
+                                   logicFrontBottomCub,
+                                   "FrontBottomCub",
+                                   logicWorld,
+                                  false,
+                                  0);  
+
+  logicFrontBottomCub->SetVisAttributes(BoxVisAttGrey);
+
+ //--------------Back Top Cubiod ----------------------//
+  G4double BackTopCubDimX = 5*mm, BackTopCubDimY = 26.5*mm, BackTopCubDimZ = 5*mm;
+  
+  G4double BackTopCubPosX = 0, BackTopCubPosY = 24.75*mm, BackTopCubPosZ = BackPosZ;
+  
+  G4Box* BackTopCub = new G4Box("AlBackTopCub",BackTopCubDimX/2, BackTopCubDimY/2, BackTopCubDimZ/2);
+   
+  G4LogicalVolume* logicBackTopCub = new G4LogicalVolume(BackTopCub,
+                                                          PureAluminum,
+                                                          "BackTopCubFrame",
+                                                          0,0,0);
+  fBackTopCub = new G4PVPlacement(0,
+                                   G4ThreeVector(BackTopCubPosX, BackTopCubPosY, BackTopCubPosZ),
+                                   logicBackTopCub,
+                                   "BackTopCub",
+                                   logicWorld,
+                                  false,
+                                  0);                    
+  
+  logicBackTopCub->SetVisAttributes(BoxVisAttGrey);
+
+   //--------------Back Bottom Cubiod ----------------------//
+  G4double BackBottomCubDimX = 5*mm, BackBottomCubDimY = 26.5*mm, BackBottomCubDimZ = 5*mm;
+  
+  G4double BackBottomCubPosX = 0, BackBottomCubPosY = -24.75*mm, BackBottomCubPosZ = BackPosZ;
+  
+  G4Box* BackBottomCub = new G4Box("AlBackBottomCub",BackBottomCubDimX/2, BackBottomCubDimY/2, BackBottomCubDimZ/2);
+   
+  G4LogicalVolume* logicBackBottomCub = new G4LogicalVolume(BackBottomCub,
+                                                          PureAluminum,
+                                                          "BackBottomCubFrame",
+                                                          0,0,0);
+  fBackBottomCub = new G4PVPlacement(0,
+                                   G4ThreeVector(BackBottomCubPosX, BackBottomCubPosY, BackBottomCubPosZ),
+                                   logicBackBottomCub,
+                                   "BackBottomCub",
+                                   logicWorld,
+                                  false,
+                                  0);  
+
+  logicBackBottomCub->SetVisAttributes(BoxVisAttGrey);
+}
+//***************************************************************************************************************************************************************//
+
+
+  
+  
+  
+
+  return physWorld;
+  
+}  

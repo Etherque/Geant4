@@ -1,0 +1,574 @@
+//see PhysicsList.hh for more details
+
+//.hh files are added as they are needed for simplicity
+#include "PhysicsList.hh"
+#include "G4ParticleDefinition.hh"
+#include "G4ProcessManager.hh"
+#include "G4ParticleTypes.hh"
+#include "G4ParticleTable.hh"
+#include"G4StepLimiter.hh"
+//---------------------------------------------------------
+// Beginning
+//---------------------------------------------------------
+
+//constructor
+PhysicsList::PhysicsList():G4VUserPhysicsList()
+{
+	//the default cut value will only simulate things that extend
+	//beyond this value.  Otherwise will treat as energy loss
+	defaultCutValue = 1.0*mm;
+
+	//Verbosity level:
+	//  0: Silent
+	//  1: Warning message
+	//  2: More
+	SetVerboseLevel(1);
+}
+
+//destructor
+PhysicsList::~PhysicsList() {;}
+
+//---------------------------------------------------------
+//Construct Particles 
+//---------------------------------------------------------
+
+//these methods construct all particles
+#include "G4BosonConstructor.hh"
+#include "G4LeptonConstructor.hh"
+#include "G4MesonConstructor.hh"
+#include "G4BaryonConstructor.hh"
+#include "G4IonConstructor.hh"
+#include "G4ShortLivedConstructor.hh"
+//#include "G4ParticleTypes.hh" //new
+
+//Construct the different types of particles with different functions.
+//We construct all particles since this should not affect performance.
+//We will not, however, add all the physics processes for each particle
+//as this would affect performance.
+//Furthermore, since particles are defined statically, they are
+//all added to the G4ParticleTable regardless of what goes on in this method.
+//This method has been implemented as this is what is "supposed" to be done
+//according to the Geant4 User Guide
+void PhysicsList::ConstructParticle()
+{
+  	//Geantino
+  	 G4Geantino::GeantinoDefinition(); //new
+  	 G4ChargedGeantino::ChargedGeantinoDefinition();
+
+  	//Construct all bosons 
+  	G4BosonConstructor bConstructor;
+  	bConstructor.ConstructParticle();  
+
+	//Construct all leptons
+	G4LeptonConstructor lConstructor;
+	lConstructor.ConstructParticle();
+
+  	//Construct all mesons
+  	G4MesonConstructor mConstructor;
+  	mConstructor.ConstructParticle();
+
+  	//Construct all barions
+  	G4BaryonConstructor  hConstructor;
+  	hConstructor.ConstructParticle();  
+
+  	//Construct light ions
+  	G4IonConstructor iConstructor;
+  	iConstructor.ConstructParticle();  
+
+	//Construct short lived as they are needed
+	//for the electronuclear process
+	G4ShortLivedConstructor sConstructor;
+	sConstructor.ConstructParticle();
+  
+}
+
+//---------------------------------------------------------
+//Construct Processes 
+//---------------------------------------------------------
+
+
+//needed to add and manage processes
+#include "G4ProcessManager.hh"
+
+void PhysicsList::ConstructProcess()
+{
+	//adds transportation so particles can move
+	//protected method of G4VUserPhysicsList
+	AddTransportation();
+
+	//Electric and Magnetic Processes
+	G4cout << "PhysicsList::ConstructProcess() -> Registering EM processes\n";
+	ConstructEM();
+
+	//Construct neutron-specific physics
+	G4cout << "PhysicsList::ConstructProcess() -> Registering hadronic processes\n";
+	ConstructHadronic();
+
+	//Construct photonuclear physics
+	G4cout << "PhysicsList::ConstructProcess() -> Registering photonuclear processes\n";
+	ConstructPhotonuclear();
+	
+	//Processes that don't fit in the above catagories
+	G4cout << "PhysicsList::ConstructProcess() -> Registering general processes\n";
+	ConstructGeneral();
+
+	G4cout << "PhysicsList::ConstructProcess() -> Done registering physics processes\n";
+
+
+}
+
+//Include files needed for EM processes
+#include "G4ComptonScattering.hh"
+#include "G4PolarizedComptonScattering.hh"
+#include "G4GammaConversion.hh"
+#include "G4PhotoElectricEffect.hh"
+
+#include "G4MultipleScattering.hh"
+
+#include "G4eIonisation.hh"
+#include "G4eBremsstrahlung.hh"
+#include "G4eplusAnnihilation.hh"
+
+#include "G4MuIonisation.hh"
+#include "G4MuBremsstrahlung.hh"
+#include "G4MuPairProduction.hh"
+
+#include "G4ionIonisation.hh"
+#include "G4hIonisation.hh"
+
+
+//add all the EM processes
+void PhysicsList::ConstructEM()
+{
+	//the particle, it's process maneger and it's name
+    	G4ParticleDefinition* particle;
+    	G4ProcessManager* pmanager;
+    	G4String particleName; 
+
+
+	//reset the particle iterator so we can use it in the loop
+	//the particle iterator is a global variable of G4VUserPhysicsList
+	theParticleIterator->reset();
+ 
+	//iterate through all particles 
+     	while( (*theParticleIterator)() )
+	{
+	
+	 //gets the particle's name and process manager
+    	 particle = theParticleIterator->value();
+    	 pmanager = particle->GetProcessManager();
+    	 particleName = particle->GetParticleName();
+	
+	 //gamma EM processes
+    	 if (particleName == "gamma") 
+	 {
+		//standard processes: pair production, compton scattering and photoelectric effect
+		G4GammaConversion * gammaConversion = new G4GammaConversion();
+		G4ComptonScattering * comptonScattering = new G4ComptonScattering();
+		G4PhotoElectricEffect * photoElectricEffect = new G4PhotoElectricEffect();
+
+      		//add processes
+      		pmanager->AddDiscreteProcess(gammaConversion);
+		pmanager->AddDiscreteProcess(comptonScattering);
+      		pmanager->AddDiscreteProcess(photoElectricEffect);
+
+	 }
+	 //processes for the electron 
+	 else if (particleName == "e-") 
+	 {
+		//Scattering, engery loss do to ionisation and bremsstrahlung
+      		G4VProcess* theeminusMultipleScattering = new G4MultipleScattering();
+      		G4VProcess* theeminusIonisation         = new G4eIonisation();
+      		G4VProcess* theeminusBremsstrahlung     = new G4eBremsstrahlung();
+      		
+      		// add processes
+      		pmanager->AddProcess(theeminusMultipleScattering);
+      		pmanager->AddProcess(theeminusIonisation);
+      		pmanager->AddProcess(theeminusBremsstrahlung);
+      		
+      		// set ordering for AlongStepDoIt
+      		pmanager->SetProcessOrdering(theeminusMultipleScattering, idxAlongStep,1);
+      		pmanager->SetProcessOrdering(theeminusIonisation,         idxAlongStep,2);
+      		pmanager->SetProcessOrdering(theeminusBremsstrahlung,     idxAlongStep,3);      
+      		
+      		// set ordering for PostStepDoIt
+      		pmanager->SetProcessOrdering(theeminusMultipleScattering, idxPostStep,1);
+      		pmanager->SetProcessOrdering(theeminusIonisation,         idxPostStep,2);
+      		pmanager->SetProcessOrdering(theeminusBremsstrahlung,     idxPostStep,3);
+	}
+	//processes for the positron
+	else if (particleName == "e+")
+	{
+		//Scattering, engery loss do to ionisation and bremsstrahlung
+      		G4VProcess* theeplusMultipleScattering = new G4MultipleScattering();
+      		G4VProcess* theeplusIonisation         = new G4eIonisation();
+     		G4VProcess* theeplusBremsstrahlung     = new G4eBremsstrahlung();
+
+		//annihilation of an atomic electron
+      		G4VProcess* theeplusAnnihilation       = new G4eplusAnnihilation();
+      
+      		// add processes
+      		pmanager->AddProcess(theeplusMultipleScattering);
+      		pmanager->AddProcess(theeplusIonisation);
+      		pmanager->AddProcess(theeplusBremsstrahlung);
+     		pmanager->AddProcess(theeplusAnnihilation);
+      
+      		// set ordering for AtRestDoIt
+      		pmanager->SetProcessOrderingToFirst(theeplusAnnihilation, idxAtRest);
+      
+      		// set ordering for AlongStepDoIt
+      		pmanager->SetProcessOrdering(theeplusMultipleScattering, idxAlongStep,1);
+      		pmanager->SetProcessOrdering(theeplusIonisation,         idxAlongStep,2);
+      		pmanager->SetProcessOrdering(theeplusBremsstrahlung,     idxAlongStep,3);      
+      
+      		// set ordering for PostStepDoIt
+      		pmanager->SetProcessOrdering(theeplusMultipleScattering, idxPostStep,1);
+      		pmanager->SetProcessOrdering(theeplusIonisation,         idxPostStep,2);
+      		pmanager->SetProcessOrdering(theeplusBremsstrahlung,     idxPostStep,3);
+      		pmanager->SetProcessOrdering(theeplusAnnihilation,       idxPostStep,4);
+	} 
+	//processes for the muons
+	else if( particleName == "mu+" || particleName == "mu-" )
+	{
+		//Scattering, engery loss due to ionisation and bremsstrahlung
+      		G4VProcess* aMultipleScattering = new G4MultipleScattering();
+      		G4VProcess* aBremsstrahlung     = new G4MuBremsstrahlung();
+      		G4VProcess* anIonisation        = new G4MuIonisation();
+      		
+		//Production of e+/e- pairs by muons
+		G4VProcess* aPairProduction     = new G4MuPairProduction();
+      		
+		//ADD capure at rest for mu-
+
+      		// add processes
+      		pmanager->AddProcess(anIonisation);
+      		pmanager->AddProcess(aMultipleScattering);
+      		pmanager->AddProcess(aBremsstrahlung);
+      		pmanager->AddProcess(aPairProduction);
+      		
+      		// set ordering for AlongStepDoIt
+      		pmanager->SetProcessOrdering(aMultipleScattering, idxAlongStep,1);
+      		pmanager->SetProcessOrdering(anIonisation,        idxAlongStep,2);
+      		pmanager->SetProcessOrdering(aBremsstrahlung,     idxAlongStep,3);
+      		pmanager->SetProcessOrdering(aPairProduction,     idxAlongStep,4);      
+      		
+      		// set ordering for PostStepDoIt
+      		pmanager->SetProcessOrdering(aMultipleScattering, idxPostStep,1);
+      		pmanager->SetProcessOrdering(anIonisation,        idxPostStep,2);
+      		pmanager->SetProcessOrdering(aBremsstrahlung,     idxPostStep,3);
+      		pmanager->SetProcessOrdering(aPairProduction,     idxPostStep,4);
+	}
+	//for ions
+        else if (particleName == "GenericIon")
+	{
+		//multiple scattering and ionisation for hadrons (and the tau)
+     		G4VProcess* aMultipleScattering = new G4MultipleScattering();
+     		G4VProcess* anIonisation        = new G4ionIonisation();
+     		
+     		// add processes
+     		pmanager->AddProcess(anIonisation);
+     		pmanager->AddProcess(aMultipleScattering);
+     		
+     		// set ordering for AlongStepDoIt
+     		pmanager->SetProcessOrdering(aMultipleScattering, idxAlongStep,1);
+     		pmanager->SetProcessOrdering(anIonisation,        idxAlongStep,2);
+     		
+     		// set ordering for PostStepDoIt
+     		pmanager->SetProcessOrdering(aMultipleScattering, idxPostStep,1);
+     		pmanager->SetProcessOrdering(anIonisation,        idxPostStep,2);
+	}
+	else if(particleName == "chargedgeantino") 
+	{
+		//no EM interactions between geantinos and matter
+		//a geantino is a ray-tracing particle only
+                //pmanager->AddDiscreteProcess(new G4StepLimiter);
+
+	pmanager->AddProcess(new G4StepLimiter,       -1, -1,4);	
+	}
+	//for all other carged particles that aren't short lived
+	else if ( (!particle->IsShortLived()) && (particle->GetPDGCharge() != 0.0) )
+	{
+		//multiple scattering and ionisation for hadrons (and the tau)
+     		G4VProcess* aMultipleScattering = new G4MultipleScattering();
+     		G4VProcess* anIonisation        = new G4hIonisation();
+     		
+     		// add processes
+     		pmanager->AddProcess(anIonisation);
+     		pmanager->AddProcess(aMultipleScattering);
+     		
+     		// set ordering for AlongStepDoIt
+     		pmanager->SetProcessOrdering(aMultipleScattering, idxAlongStep,1);
+     		pmanager->SetProcessOrdering(anIonisation,        idxAlongStep,2);
+     		
+     		// set ordering for PostStepDoIt
+     		pmanager->SetProcessOrdering(aMultipleScattering, idxPostStep,1);
+     		pmanager->SetProcessOrdering(anIonisation,        idxPostStep,2);
+    	}
+
+   }//end of while
+	
+}//end of ConstructEM()
+
+
+//includes for hadrons
+//it is informative to look at example N04
+//from geant4 version 6.2 or before
+//(after this built-in physics lists were adopted)
+//for more information about hadronic physics
+#include "G4LElastic.hh"   
+#include "G4HadronElasticProcess.hh"
+#include "G4PreCompoundModel.hh" 
+#include "G4ExcitationHandler.hh"  
+
+//includes for neutrons
+//see example extended/radioactivedecay/exrdm
+#include "G4NeutronHPElastic.hh"
+#include "G4NeutronHPElasticData.hh"
+#include "G4LENeutronInelastic.hh"
+#include "G4HENeutronInelastic.hh"
+#include "G4NeutronHPInelastic.hh"
+#include "G4NeutronHPInelasticData.hh"
+#include "G4NeutronInelasticCrossSection.hh"
+#include "G4NeutronInelasticProcess.hh"
+#include "G4LFission.hh"
+#include "G4NeutronHPFission.hh"
+#include "G4NeutronHPFissionData.hh"
+#include "G4HadronFissionProcess.hh"
+#include "G4LCapture.hh"
+#include "G4NeutronHPCapture.hh"
+#include "G4NeutronHPCaptureData.hh"
+#include "G4HadronCaptureProcess.hh"
+
+//includes for protons
+#include "G4LEProtonInelastic.hh"
+#include "G4HEProtonInelastic.hh"
+#include "G4ProtonInelasticProcess.hh"
+#include "G4ProtonInelasticCrossSection.hh"
+
+
+//the hadronic interactions for neutrons, protons and ions
+void PhysicsList::ConstructHadronic()
+{
+	//G4LElastic is used by many different particles:
+	//hadron-nucleus elastic scattering
+	G4LElastic * theElasticModel = new G4LElastic(); 
+   	G4HadronElasticProcess * theElasticProcess = new G4HadronElasticProcess();
+  	theElasticProcess->RegisterMe(theElasticModel); //good for all energies 
+
+
+	//---------------------------------------- neutron
+
+	//Neutrons use the high precision (HP) neutron models for interactions < 20MeV
+	//These models are data driven and use the data in G4NDL
+	//For interactions above 20MeV, other models are required
+	//Much of this is based on the LHEP_PRECO_HP physics list.
+	//If this list is sufficient, use it instead
+
+	//gets the process manager for the neutron
+    	G4ProcessManager * neutronProcMan = G4Neutron::Neutron()->GetProcessManager();
+
+	G4cout << "PhysicsList: Loading high precision neutron data: Elastic scattering\n";
+	G4cout.flush();
+
+   	//neutron-nucleus elastic scattering: High precision (from data sets)
+   	G4HadronElasticProcess 	* theNeutronElasticProcess 	= new G4HadronElasticProcess();
+  	G4LElastic		* theNeutronElastic 		= new G4LElastic(); 
+  	G4NeutronHPElastic 	* theNeutronHPElastic 		= new G4NeutronHPElastic();
+  	G4NeutronHPElasticData 	* theNeutronHPElasticData 	= new G4NeutronHPElasticData();
+    	theNeutronHPElastic -> SetMinEnergy( 0.0*MeV);
+    	theNeutronHPElastic -> SetMaxEnergy(20.0*MeV);
+	theNeutronElastic   -> SetMinEnergy(19.9*MeV);
+  	theNeutronElasticProcess->AddDataSet(theNeutronHPElasticData);
+  	theNeutronElasticProcess->RegisterMe(theNeutronElastic);
+  	theNeutronElasticProcess->RegisterMe(theNeutronHPElastic);
+  	neutronProcMan->AddDiscreteProcess(theNeutronElasticProcess); 
+
+	G4cout << "PhysicsList: Loading high precision neutron data: Inelastic scattering\n";
+	G4cout.flush();
+
+   	//inelastic interactions: High precision (from data sets)
+	//High precision datasets from 0 to 20 MeV
+	//Pre-compound (PRECO) used for above 20MeV to 170 MeV
+	//Low-energy parameterised from 150 MeV to 55 GeV
+	//High-energy prameterised from 45 GeV and beyond
+	G4NeutronInelasticProcess * theNeutronInelasticProcess 	= new G4NeutronInelasticProcess();
+  	G4LENeutronInelastic 	  * theLENeutronInelastic	= new G4LENeutronInelastic();
+  	G4HENeutronInelastic	  * theHENeutronInelastic	= new G4HENeutronInelastic();
+  	G4NeutronHPInelastic 	  * theNeutronHPInelastic 	= new G4NeutronHPInelastic();
+  	G4NeutronHPInelasticData  * theNeutronHPInelasticData 	= new G4NeutronHPInelasticData();
+    	G4ExcitationHandler 	  * theNeutronExcitationHandler	= new G4ExcitationHandler();
+    	G4PreCompoundModel 	  * theNeutronPRECOModel	= new G4PreCompoundModel(theNeutronExcitationHandler);   
+    	G4NeutronInelasticCrossSection * theNeutronICS 		= new G4NeutronInelasticCrossSection(); //for G4PreCompoundModel
+    	theNeutronHPInelastic -> SetMinEnergy(  0.0*MeV);
+    	theNeutronHPInelastic -> SetMaxEnergy( 20.0*MeV);
+	theNeutronPRECOModel  -> SetMinEnergy( 19.9*MeV);
+  	theNeutronPRECOModel  -> SetMaxEnergy(170.0*MeV);
+    	theLENeutronInelastic -> SetMinEnergy(150.0*MeV);
+    	theLENeutronInelastic -> SetMaxEnergy( 55.0*GeV);
+    	theHENeutronInelastic -> SetMinEnergy( 45.0*GeV);
+  	theNeutronInelasticProcess->AddDataSet(theNeutronHPInelasticData);
+  	theNeutronInelasticProcess->AddDataSet(theNeutronICS);
+  	theNeutronInelasticProcess->RegisterMe(theNeutronHPInelastic);
+  	theNeutronInelasticProcess->RegisterMe(theNeutronPRECOModel);
+  	theNeutronInelasticProcess->RegisterMe(theLENeutronInelastic);
+  	theNeutronInelasticProcess->RegisterMe(theHENeutronInelastic);
+	neutronProcMan->AddDiscreteProcess(theNeutronInelasticProcess);
+
+	G4cout << "PhysicsList: Loading high precision neutron data: Fission\n";
+	G4cout.flush();
+
+	//final state production model for induced fission: High precision (from data sets)
+  	G4HadronFissionProcess 	* theNeutronFissionProcess 	= new G4HadronFissionProcess();
+  	G4LFission		* theNeutronFission 		= new G4LFission();
+  	G4NeutronHPFission 	* theNeutronHPFission 		= new G4NeutronHPFission();
+  	G4NeutronHPFissionData 	* theNeutronHPFissionData	= new G4NeutronHPFissionData();
+    	theNeutronHPFission -> SetMinEnergy(0.0*eV);
+    	theNeutronHPFission -> SetMaxEnergy(20.0*MeV);
+    	theNeutronFission   -> SetMinEnergy(19.9*MeV);
+  	theNeutronFissionProcess->AddDataSet(theNeutronHPFissionData);
+  	theNeutronFissionProcess->RegisterMe(theNeutronHPFission);
+  	theNeutronFissionProcess->RegisterMe(theNeutronFission);
+  	neutronProcMan->AddDiscreteProcess(theNeutronFissionProcess);
+	
+	G4cout << "PhysicsList: Loading high precision neutron data: Capture\n";
+	G4cout.flush();
+
+	//final state production model for capture of neutrons by nuclei: High precision (from data sets)
+   	G4HadronCaptureProcess 	* theNeutronCaptureProcess 	= new G4HadronCaptureProcess();
+  	G4LCapture		* theNeutronCapture 		= new G4LCapture();
+   	G4NeutronHPCapture 	* theNeutronHPCapture 		= new G4NeutronHPCapture();
+   	G4NeutronHPCaptureData 	* theNeutronHPCaptureData 	= new G4NeutronHPCaptureData();
+    	theNeutronHPCapture -> SetMinEnergy(0.0*eV);
+    	theNeutronHPCapture -> SetMaxEnergy(20.0*MeV);
+	theNeutronCapture   -> SetMinEnergy(19.9*MeV);
+  	theNeutronCaptureProcess->AddDataSet(theNeutronHPCaptureData);
+  	theNeutronCaptureProcess->RegisterMe(theNeutronHPCapture);
+  	theNeutronCaptureProcess->RegisterMe(theNeutronCapture);
+  	neutronProcMan->AddDiscreteProcess(theNeutronCaptureProcess);
+	
+
+	//---------------------------------------- proton
+
+	//gets the process manager for the proton
+    	G4ProcessManager * protonProcMan = G4Proton::Proton()->GetProcessManager();
+
+   	//proton-nucleus elastic scattering
+  	protonProcMan->AddDiscreteProcess(theElasticProcess);
+
+   	//inelastic interactions
+   	G4ProtonInelasticProcess * theProtonInelasticProcess 	= new G4ProtonInelasticProcess();
+ 	G4LEProtonInelastic 	 * theLEProtonInelastic 	= new G4LEProtonInelastic();
+	G4HEProtonInelastic 	 * theHEProtonInelastic		= new G4HEProtonInelastic();
+    	G4ExcitationHandler 	 * theProtonExcitationHandler	= new G4ExcitationHandler();
+    	G4PreCompoundModel 	 * theProtonPRECOModel		= new G4PreCompoundModel(theProtonExcitationHandler);   
+    	G4ProtonInelasticCrossSection * theProtonICS 		= new G4ProtonInelasticCrossSection(); //for G4PreCompoundModel
+	theProtonPRECOModel  -> SetMinEnergy(  0.0*MeV);
+  	theProtonPRECOModel  -> SetMaxEnergy(170.0*MeV);
+    	theLEProtonInelastic -> SetMinEnergy(150.0*MeV);
+    	theLEProtonInelastic -> SetMaxEnergy( 55.0*GeV);
+    	theHEProtonInelastic -> SetMinEnergy( 45.0*GeV);
+  	theProtonInelasticProcess->AddDataSet( theProtonICS);
+  	theProtonInelasticProcess->RegisterMe( theProtonPRECOModel );
+  	theProtonInelasticProcess->RegisterMe( theLEProtonInelastic );
+  	theProtonInelasticProcess->RegisterMe( theHEProtonInelastic );
+  	protonProcMan->AddDiscreteProcess(theProtonInelasticProcess);
+	
+
+	//---------------------------------------- deuteron
+	//---------------------------------------- triton
+	//---------------------------------------- alpha
+	//---------------------------------------- He-3
+	//---------------------------------------- generic ion
+
+}//end of ConstructHadronic()
+
+//includes for photonuclear physics
+#include "G4PhotoNuclearProcess.hh"
+#include "G4GammaNuclearReaction.hh"
+#include "G4ElectronNuclearProcess.hh"
+#include "G4PositronNuclearProcess.hh"
+#include "G4ElectroNuclearReaction.hh"
+
+//Photonuclear physics
+//See example advanced/cosmicray_charging/src/LISAPhysicsList.cc
+void PhysicsList::ConstructPhotonuclear()
+{
+	//---------------------------------------- gamma
+
+	G4ProcessManager * gammaProcMan = G4Gamma::Gamma()->GetProcessManager();
+
+	//We use only the low energy photonuclear since this carries us to 3.5 GeV
+	G4PhotoNuclearProcess * thePhotoNuclearProcess = new G4PhotoNuclearProcess();
+	G4GammaNuclearReaction * theGammaReaction = new G4GammaNuclearReaction();
+	theGammaReaction->SetMaxEnergy(3.5*GeV);
+	thePhotoNuclearProcess->RegisterMe(theGammaReaction);
+	gammaProcMan->AddDiscreteProcess(thePhotoNuclearProcess);
+
+  
+	//---------------------------------------- electron and positron
+
+	G4ProcessManager * electronProcMan = G4Electron::Electron()->GetProcessManager();
+  	G4ProcessManager * positronProcMan = G4Positron::Positron()->GetProcessManager();
+
+	//This modle carries us up to 10 TeV for both particles
+	G4ElectronNuclearProcess * theElectronNuclearProcess = new G4ElectronNuclearProcess();
+	G4PositronNuclearProcess * thePositronNuclearProcess = new G4PositronNuclearProcess();
+	G4ElectroNuclearReaction * theElectroNuclearReaction = new G4ElectroNuclearReaction();
+	theElectroNuclearReaction->SetMaxEnergy(10*TeV);
+	theElectronNuclearProcess->RegisterMe(theElectroNuclearReaction);
+	thePositronNuclearProcess->RegisterMe(theElectroNuclearReaction);
+	electronProcMan->AddDiscreteProcess(theElectronNuclearProcess);
+ 	positronProcMan->AddDiscreteProcess(thePositronNuclearProcess);
+}
+
+//includes for ConstructGeneral()
+#include "G4Decay.hh"
+
+//general processes that don't fit into other catagories
+void PhysicsList::ConstructGeneral()
+{
+ 	// Add Decay Process
+   	G4Decay* theDecayProcess = new G4Decay();
+  	theParticleIterator->reset();
+  
+	//for all particles: Add decay Process
+	while( (*theParticleIterator)() )
+	{
+    		G4ParticleDefinition* particle = theParticleIterator->value();
+    		G4ProcessManager* pmanager = particle->GetProcessManager();
+
+		//if the particle decays
+    		if (theDecayProcess->IsApplicable(*particle)) 
+		{ 
+      			pmanager ->AddProcess(theDecayProcess);
+      			// set ordering for PostStepDoIt and AtRestDoIt
+      			pmanager ->SetProcessOrdering(theDecayProcess, idxPostStep);
+      			pmanager ->SetProcessOrdering(theDecayProcess, idxAtRest);
+    		}
+  	}
+}
+
+
+//---------------------------------------------------------
+// Set Cuts 
+//---------------------------------------------------------
+
+void PhysicsList::SetCuts()
+{
+  	if (verboseLevel >0)
+	{
+    		G4cout << "PhysicsList::SetCuts:";
+    		G4cout << "CutLength : " << G4BestUnit(defaultCutValue,"Length") << G4endl;
+  	}
+
+  	// set cut values for gamma at first and for e- second and next for e+,
+  	// because some processes for e+/e- need cut values for gamma
+  	SetCutValue(defaultCutValue, "gamma");
+  	SetCutValue(defaultCutValue, "e-");
+  	SetCutValue(defaultCutValue, "e+");
+
+  	if (verboseLevel>0) DumpCutValuesTable();
+}
+
+
+//end of file PhysicsList.cc 

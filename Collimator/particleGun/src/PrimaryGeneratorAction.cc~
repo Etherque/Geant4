@@ -1,0 +1,107 @@
+#include "PrimaryGeneratorAction.hh"
+#include "G4Event.hh"
+#include "G4ParticleGun.hh"
+#include "G4ParticleTable.hh"
+#include "G4ParticleDefinition.hh"
+#include "G4PhysicalConstants.hh"
+#include "G4SystemOfUnits.hh"
+#include "Randomize.hh"
+#include "DetectorConstruction.hh"
+#include "G4RunManager.hh"
+
+#define NUMBER_OF_POSSIBLE_THETA 181
+#define NUMBER_OF_POSSIBLE_PSI 360
+
+//include standard C++ tools for opening numeric data files
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <iterator>
+#include <algorithm>
+
+//include math library for making a sine squared distribution for psi
+#include <math.h>
+#define PI 3.1415926535
+#define lists 8
+#define totalevents 48
+
+   
+using namespace std;
+int thetaArraySize;
+int psiArraySize;
+int numofevents=0;
+double acceptevent[totalevents][lists];
+
+static ifstream fileinput;
+static string ln;
+
+PrimaryGeneratorAction::PrimaryGeneratorAction()
+{    
+  G4int n_particle = 1;
+  particleGun  = new G4ParticleGun(n_particle);
+    
+  G4ParticleDefinition* particle
+           = G4ParticleTable::GetParticleTable()->FindParticle("proton");
+  particleGun->SetParticleDefinition(particle);
+        
+  // Give the particle some default parameters that are changed later in 
+  // GeneratePrimaries()
+
+   fileinput.open("/var/phy/project/ntof/zh27/Inclusive_prediction/Proton_Prediction/interpolation/monoenergy_polarizedevents_3H19fm.txt");
+}
+
+PrimaryGeneratorAction::~PrimaryGeneratorAction()
+{
+   delete particleGun;
+}  
+
+void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
+{  
+
+   G4double energy, theta, psi;
+   G4double pParticleRadius,pParticleZ, pParticleAngle;
+   double tmparray[7];
+  
+   getline(fileinput,ln);
+   G4cout<<ln<<G4endl;
+   sscanf(ln.c_str(), "%lf %lf %lf %lf %lf %lf %lf %lf", &tmparray[0], &tmparray[1], &tmparray[2], &tmparray[3], &tmparray[4], &tmparray[5], &tmparray[6], &tmparray[7]);
+
+   theta= tmparray[1]*deg;
+   psi= tmparray[2]*deg;
+   energy= tmparray[3]*MeV;
+   //Set the initial direction of propagation 
+   G4double cosTheta = std::cos(theta);
+   G4double sinTheta = std::sqrt(1. - cosTheta*cosTheta);  
+   G4ThreeVector dir(sinTheta*std::cos(psi),sinTheta*std::sin(psi),cosTheta);//(x=sin(theta)cos(phi),y=sin(theta)sin(phi),z=cos(theta)
+   particleGun->SetParticleMomentumDirection(dir);
+
+  // Set energy
+   particleGun->SetParticleEnergy(energy);
+
+  // Set initial position to a random position within the target volume
+   pParticleRadius = tmparray[5]*mm;
+   pParticleZ = tmparray[6]*cm-5*cm;
+   pParticleAngle = tmparray[7]*deg;
+
+   G4ThreeVector InitialPos(pParticleRadius * std::cos(pParticleAngle),
+       			   pParticleRadius * std::sin(pParticleAngle),
+ 			   pParticleZ);
+
+   particleGun->SetParticlePosition(InitialPos);  
+  
+   particleInitialPosR.push_back(pParticleRadius);
+   particleInitialPosZ.push_back(pParticleZ);
+   particleInitialPosTheta.push_back(pParticleAngle);
+
+   particleInitialDirTheta.push_back(theta);
+   particleInitialDirPhi.push_back(psi);
+   particleInitialEnergy.push_back(energy);
+
+  //create vertex   
+   particleGun->GeneratePrimaryVertex(anEvent);
+   numofevents++;
+   // getline(fileinput,ln);
+}
+
+

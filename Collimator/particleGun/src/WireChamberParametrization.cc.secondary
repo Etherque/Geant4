@@ -1,0 +1,30 @@
+#include "WireChamberParametrization.hh"
+
+#include "G4VPhysicalVolume.hh"
+#include "G4ThreeVector.hh"
+#include "G4Box.hh"
+
+WireChamberParametrization::WireChamberParametrization (
+	G4int numberOfChambers,
+	G4ThreeVector startPos,
+	G4double spacingX,
+	G4double chamberWidth )
+
+{
+   fNumberOfChambers = numberOfChambers;
+   fStartPos = startPos;
+   fHalfWidth = chamberWidth * 0.5;
+   fSpacing = spacingX;
+   
+}
+
+WireChamberParametrization::~WireChamberParametrization()
+{}
+
+void WireChamberParametrization::ComputeTransformation
+  (const G4int copyNo, G4VPhysicalVolume* physVol) const
+{
+    G4double xPosition = fStartPos.x() + (copyNo + 1) * fSpacing;
+    G4ThreeVector newOrigin(fStartPos.x() + xPosition, fStartPos.y(), fStartPos.z());
+    physVol->SetTranslation(newOrigin);
+}

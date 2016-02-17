@@ -1,0 +1,22 @@
+#ifndef SteppingAction_h
+#define SteppingAction_h 1
+
+#include "G4UserSteppingAction.hh"
+
+
+class SteppingAction : public G4UserSteppingAction
+{
+public:
+  SteppingAction();
+  virtual ~SteppingAction();
+
+  void UserSteppingAction(const G4Step*);
+
+private:
+  G4double chamber_energy,SDet_energy,angle_z,angle_sz,Eint;
+  G4String prestep, volume_name, next_volume_name;
+};
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+#endif

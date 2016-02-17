@@ -1,0 +1,182 @@
+#include "SteppingAction.hh"
+
+#include "DetectorConstruction.hh"
+#include "EventAction.hh"
+
+#include "G4SteppingManager.hh"
+#include "G4Step.hh"
+#include "G4VVisManager.hh"
+
+#include "G4Colour.hh"
+#include "G4Polyline.hh" 
+#include "G4VisAttributes.hh"
+#include "G4VPhysicalVolume.hh"
+#include "G4SystemOfUnits.hh"
+#include "G4PhysicalConstants.hh"
+#include "G4Event.hh"
+#include "G4UnitsTable.hh"
+
+SteppingAction::SteppingAction()                                      
+{ }
+
+SteppingAction::~SteppingAction()
+{ }
+
+void SteppingAction::UserSteppingAction(const G4Step* aStep)
+{
+  G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
+  G4Track * fTrack  = aStep->GetTrack();
+  G4VPhysicalVolume * n_vol_pt = fTrack->GetNextVolume();
+  G4String name = aStep->GetTrack()->GetDefinition()->GetParticleName();
+  G4String prestep, volume_name, next_volume_name;
+  G4VPhysicalVolume* volume = aStep->GetPreStepPoint()->GetTouchableHandle()->GetVolume();
+  G4String procName;
+  G4int parentID = fTrack->GetParentID();                  
+  G4int stepNum = fTrack->GetCurrentStepNumber();
+  //G4ThreeVector momentCb,momentSD;
+  G4double chamber_energy,SDet_energy,MFilm_energy,chamberouter_energy,MFilmOuter_energy,MFilm_energy_prev_R1;
+
+  if(n_vol_pt){
+       next_volume_name = fTrack->GetNextVolume()->GetName();
+       volume_name = fTrack->GetVolume()->GetName();
+ }
+  
+  if((name=="proton")&&(parentID==0)){
+  //if((name=="deuteron")&&(parentID==0)){ 
+     if(aStep->GetPostStepPoint()->GetProcessDefinedStep()!=0)
+          procName=aStep->GetPostStepPoint()->GetProcessDefinedStep()->GetProcessName();
+ 
+    if(stepNum==1){
+                prestep="Initial";
+                G4ThreeVector momentIn = fTrack->GetMomentum(); 
+                G4ThreeVector positionIn = fTrack-> GetPosition();
+                G4double angle_int =atan(sqrt(momentIn.y()*momentIn.y()/(momentIn.x()*momentIn.x()))); 
+                G4double Eint = fTrack->GetKineticEnergy();
+                // if(angle_int<=5*deg){ 
+                /*G4cout<<"Initial_: "
+                //G4cout<< "1" << "  "
+                      << G4BestUnit(Eint,"Energy")
+                       <<"  "<<G4BestUnit(angle_int,"Angle")
+                       <<" "<<G4BestUnit(positionIn.x(),"Length")<<"  "<< G4BestUnit(positionIn.y(),"Length")<<" "<<G4BestUnit(positionIn.z(),"Length")
+                      <<G4endl; */
+                 //} 
+               }
+      
+      if(next_volume_name.contains("Chamber")){ 
+            chamber_energy = fTrack->GetKineticEnergy();
+            prestep = "Chamber";  
+            G4ThreeVector momentCb = fTrack->GetMomentum(); 
+            G4double angle_x =atan(sqrt(momentCb.y()*momentCb.y()/(momentCb.x()*momentCb.x())));
+     
+        //if((procName=="Transportation")&&(angle_x<=5*deg)){  
+           if(procName=="Transportation"){
+                  G4cout<<"Chamber_proton_: "
+                 // G4cout<<"4"<<" "
+                   << G4BestUnit(chamber_energy,"Energy")
+                   <<"  "<<G4BestUnit(angle_x,"Angle")
+                  <<G4endl;     
+          }
+      }
+      
+      if(next_volume_name.contains("MFilmPreVInnerR")){ 
+            G4double MFilm_energy = fTrack->GetKineticEnergy();
+            G4ThreeVector momentMFilmPR1 = fTrack->GetMomentum(); 
+            G4double angle_x =atan(momentMFilmPR1.y()/momentMFilmPR1.x());
+     
+        //if((procName=="Transportation")&&(angle_x<=5*deg)){  
+           if(procName=="Transportation"){
+                   G4cout<<"MFilm_PreVInR_proton_: " 
+                   //G4cout<<"3"<<" "
+                   << G4BestUnit(MFilm_energy,"Energy")
+                   <<"  "<<G4BestUnit(angle_x,"Angle")
+                  <<G4endl;     
+          }
+      }
+
+      if(next_volume_name.contains("MFilmPosTOuterR")){ 
+            G4double MFilm_energy = fTrack->GetKineticEnergy();
+            G4ThreeVector momentMFilm = fTrack->GetMomentum(); 
+            G4double angle_x =atan(sqrt(momentMFilm.y()*momentMFilm.y()/(momentMFilm.x()*momentMFilm.x())));
+     
+        //if((procName=="Transportation")&&(angle_x<=5*deg)){  
+           if(procName=="Transportation"){
+                   G4cout<<"MFilm_PostInR_proton_: " 
+                   //G4cout<<"3"<<" "
+                   << G4BestUnit(MFilm_energy,"Energy")
+                   <<"  "<<G4BestUnit(angle_x,"Angle")
+                  <<G4endl;     
+          }
+      }
+     
+      if(next_volume_name.contains("ChambOuter")){ 
+            chamberouter_energy = fTrack->GetKineticEnergy();
+           if(procName=="Transportation"){
+                  G4cout<<"Chamber_proton_: "
+                  //G4cout<<"2"<<" "
+                   << G4BestUnit(chamberouter_energy,"Energy")
+                  <<G4endl;     
+          }
+      }
+
+      if(next_volume_name.contains("MFPosTOuterR")){ 
+            MFilmOuter_energy = fTrack->GetKineticEnergy();
+           if(procName=="Transportation"){
+                   G4cout<<"MFilm_proton_: " 
+                  // G4cout<<"1"<<" "
+                   << G4BestUnit(MFilmOuter_energy,"Energy")
+                  <<G4endl;     
+          }
+      }
+
+        if(next_volume_name.contains("SDetector")){
+                   G4ThreeVector momentSD = fTrack->GetMomentum(); 
+                   SDet_energy = fTrack->GetKineticEnergy();
+                   G4double angle_sx =atan(sqrt(momentSD.y()*momentSD.y()/(momentSD.x()*momentSD.x()))); 
+
+       //if((procName=="Transportation")&&(angle_sx<=5*deg)){
+       if(procName=="Transportation"){
+                    G4cout << "SDetector_proton_: "
+                    // G4cout << "0" <<"  "
+                          << G4BestUnit(SDet_energy,"Energy")
+                          << "  "<<G4BestUnit(angle_sx,"Angle")
+                          << G4endl;
+              }
+         }        
+} 
+  
+if(pVVisManager) {
+    
+    // particle colour in a string
+    G4Colour colour;
+    
+    if(name=="proton") {
+      // violet
+      colour=G4Colour(0.4, 0.0, 1.0);
+    } else if (name=="gamma") {
+      // green
+      colour=G4Colour(0.0, 1.0, 0.0);
+    } else if (name=="e-") {
+      // red  
+      colour=G4Colour(1.0, 0.0, 0.0);
+    }
+    else if (name=="e+")
+      // yellow
+      colour=G4Colour(1.0, 1.0, 0.0);
+    else
+      // gray
+      colour=G4Colour(0.5, 0.5, 0.5);
+    
+    // create line with colour
+    G4VisAttributes attribs(colour);
+    G4Polyline polyline;
+    polyline.SetVisAttributes(attribs);
+    
+    // draw line
+    G4Point3D start(aStep->GetPreStepPoint()->GetPosition());
+    G4Point3D end(aStep->GetPostStepPoint()->GetPosition());
+    polyline.push_back(start);
+    polyline.push_back(end);
+    pVVisManager->Draw(polyline);
+  }
+}
+

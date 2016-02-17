@@ -1,0 +1,33 @@
+#ifndef PhysicsList_h
+#define PhysicsList_h 1
+
+#include "G4VUserPhysicsList.hh"
+#include "globals.hh"
+
+
+class PhysicsList: public G4VUserPhysicsList
+{
+  	public:
+    	PhysicsList();
+   	~PhysicsList();
+
+  	protected:
+
+    	//Construct particle and physics
+    	void ConstructParticle();
+    	void ConstructProcess();
+   
+    	//These methods construct physics processes and register them
+    	void ConstructGeneral();
+    	void ConstructEM();
+	void ConstructHadronic();
+	void ConstructPhotonuclear();
+    	
+	//Sets the Cuts
+	void SetCuts();
+};
+
+#endif
+
+//End of file PhysicsList.hh
+
