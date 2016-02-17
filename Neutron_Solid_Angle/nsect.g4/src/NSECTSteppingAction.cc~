@@ -1,0 +1,262 @@
+#include "NSECTSteppingAction.hh"
+#include "NSECTEventAction.hh"
+#include "G4SteppingManager.hh"
+#include "g4VerboseTrigger.hh"
+
+#include "G4VVisManager.hh"
+#include "G4Colour.hh"
+#include "G4Polyline.hh" 
+#include "G4VisAttributes.hh"
+#include "G4VPhysicalVolume.hh"
+#include "G4SystemOfUnits.hh"
+#include "G4PhysicalConstants.hh"
+#include "G4Event.hh"
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <iomanip>
+#include <algorithm>
+#include <cmath>
+
+#define PI 3.141592653 
+
+using namespace std;
+
+NSECTSteppingAction::NSECTSteppingAction(g4VerboseTrigger * trigger)
+{
+  the_verbosetrigger = trigger;
+}
+
+void NSECTSteppingAction::UserSteppingAction(const G4Step* fStep)
+{ 
+   // check that VisManager exists
+  G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
+  
+  //
+  // verbose trigger code
+  // always do this
+  //the_verbosetrigger->AddStep(fStep);
+
+  // identify the volume
+  
+  G4Track * fTrack  = fStep->GetTrack();
+  G4VPhysicalVolume * n_vol_pt = fTrack->GetNextVolume();
+  
+  G4double minStepSize = 1e-19*m;
+  
+  G4int StepNo = fStep->GetTrack()->GetCurrentStepNumber();
+  G4double StepLength = fTrack->GetStepLength();
+  
+  if((StepLength < minStepSize)||(StepNo < 0)){
+    fTrack->SetTrackStatus(fStopAndKill);
+   //G4cout << "Killed Particle" << G4endl;
+  }
+
+  G4int parentID = fTrack->GetParentID();
+  G4int stepNum = fTrack->GetCurrentStepNumber();
+  G4String name = fStep->GetTrack()->GetDefinition()->GetParticleName();
+  G4String procName = fStep->GetPostStepPoint()->GetProcessDefinedStep()->GetProcessName();
+  G4double current_energy = fTrack->GetKineticEnergy();
+  G4double min_energy = 16*keV;
+ 
+ if(current_energy < min_energy){
+    fTrack->SetTrackStatus(fStopAndKill);
+} 
+ 
+ if(n_vol_pt){
+       next_volume_name = fTrack->GetNextVolume()->GetName();
+       volume_name = fTrack->GetVolume()->GetName();
+ } 
+ else
+    volume_name    = "OutOfWorld";
+  
+  static G4double Agmin = 0.0*deg, Agmax = 2.0*deg, theta = 11.5*deg, Ecy = 30.9*cm , Ecz = 86.4*cm;
+ 
+if((name=="proton")&&(parentID==1)){ 
+//if((name=="neutron")&&(parentID==0)){
+//if(((name=="deuteron")&&(parentID==1))||((name=="proton")&&(parentID==1))){
+    static G4double angle_z, r_xyz;
+    static G4String prestep;
+    if(stepNum==1){
+                   angle_z=PI;
+                   T2x=-400.0*cm;T2y=-400.0*cm;T2z=-400.0*cm;
+                   Fdx=-400.0*cm;Fdy=-400.0*cm;Fdz=-400.0*cm;
+                   pdx=-400.0*cm;pdy=-400.0*cm;pdz=-400.0*cm;  
+                   prestep="Null"; 
+    /*              G4cout << prestep<<"  "
+                          << T2x << "  "<< T2y << "  "<< T2z<<"\n"
+                          << Fdx << "  "<< Fdy << "  "<< Fdz<<"\n"
+                          << pdx << "  "<< pdy << "  "<< pdz<<"\n" 
+                          <<G4endl;
+      */             }
+ 
+//Get Position On T2
+  if((stepNum!=1)&&(next_volume_name.contains("Targetbar4"))&&(procName=="Transportation")){ 
+          positionT2   = fTrack->GetPosition();
+          G4double KineticE = fTrack->GetKineticEnergy();
+          T2x = positionT2.x(); T2y = positionT2.y(); T2z = positionT2.z();
+          G4cout << next_volume_name <<" :"//<< prestep
+                 << name << "  "
+                 << G4BestUnit(T2x,"Length")
+                 << G4BestUnit(T2y,"Length")
+                 << G4BestUnit(T2z,"Length")
+                 << G4BestUnit(KineticE,"Energy")<<" "
+                 << procName
+                 << endl;
+           prestep = "Targetbar4"; 
+       }
+  
+
+   //Get Position On Fake Detector
+   if((prestep=="Targetbar4")&&(next_volume_name.contains("Fake_Det"))&&(procName=="Transportation")){
+      positionFD   = fTrack->GetPosition();
+      Fdx= positionFD.x(), Fdy = positionFD.y(), Fdz = positionFD.z(); 
+      r_xyz = sqrt((Fdx-T2x)*(Fdx-T2x)+(Fdy-T2y)*(Fdy-T2y)+(Fdz-T2z)*(Fdz-T2z));
+      angle_z = acos(abs(Fdz-T2z)/r_xyz);
+      G4double KineticE_fd = fTrack->GetKineticEnergy();   
+
+   if((angle_z<=1.0*deg)&&(angle_z>=0*deg)){
+    G4cout   << next_volume_name<<"_0_1:"
+             << name << "  " 
+             << G4BestUnit(Fdx,"Length") << G4BestUnit(Fdy,"Length") << G4BestUnit(Fdz,"Length")<< G4BestUnit(angle_z,"Angle")<<" "
+             << G4BestUnit(KineticE_fd,"Energy")
+             << G4endl;
+    }
+   
+    prestep="Fake_Det";  
+  }
+  
+//Get Particle Position on Detector
+   if((prestep=="Fake_Det")&&(next_volume_name.contains("EDetector"))&&(procName=="Transportation")){
+    position = fTrack->GetPosition();
+    pdx=position.x(), pdy=position.y(), pdz=position.z();    
+    G4double KineticE_ed = fTrack->GetKineticEnergy();
+
+    tdz_numerator = pdy - Ecy - Ecz/tan(theta) - (pdy - T2y)*pdz/(pdz - T2z);
+    tdz_denominator = -1/tan(theta) - (pdy-T2y)/(pdz-T2z);
+    tdz = tdz_numerator/tdz_denominator;
+    tdy = (tdz-Ecz)/sin(theta);
+
+    if((angle_z<1.0*deg)&&(angle_z>0.0*deg)){
+             G4cout  << next_volume_name << "_0_1:"
+                     << name << "  "          
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }   
+   
+   if((angle_z<3.0*deg)&&(angle_z>2.0*deg)){
+             G4cout  << next_volume_name << "_2_3:"
+                     << name << "  "          
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+
+   if((angle_z<5.0*deg)&&(angle_z>4.0*deg)){
+             G4cout  << next_volume_name << "_4_5:"
+                     << name << "  "          
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+  
+  if((angle_z<7.0*deg)&&(angle_z>6.0*deg)){
+             G4cout  << next_volume_name << "_6_7:"
+                     << name << "  "
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+
+  if((angle_z<9.0*deg)&&(angle_z>8.0*deg)){
+             G4cout  << next_volume_name << "_8_9:"
+                     << name << "  "
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+
+ if((angle_z<11.0*deg)&&(angle_z>10.0*deg)){
+             G4cout  << next_volume_name << "_10_11:"
+                     << name << "  "
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+ 
+ if((angle_z<13.0*deg)&&(angle_z>12.0*deg)){
+             G4cout  << next_volume_name << "_12_13:"
+                     << name << "  "
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+
+ if((angle_z<15.0*deg)&&(angle_z>14.0*deg)){
+             G4cout  << next_volume_name << "_14_15:"
+                     << name << "  "
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+
+ if((angle_z<17.0*deg)&&(angle_z>16.0*deg)){
+             G4cout  << next_volume_name << "_16_17:"
+                     << name << "  "
+                     << G4BestUnit(pdx,"Length") << G4BestUnit(tdy,"Length") << G4BestUnit(angle_z,"Angle")<<" "
+                     << G4BestUnit(KineticE_ed,"Energy")<<" "
+                     << G4endl;
+                     }
+
+   }
+
+ }
+
+  if (name=="gamma") {
+    // the_detector->PrintCoordinates(fStep);
+    //the_detector->Record(fStep);
+  }
+  
+  //
+  // draw tracks in visualization
+  //
+
+  if(pVVisManager) {
+    
+    // particle colour in a string
+    G4Colour colour;
+    
+    if(name=="neutron") {
+      // violet
+      colour=G4Colour(0.4, 0.0, 1.0);
+    } else if (name=="gamma") {
+      // green
+      colour=G4Colour(0.0, 1.0, 0.0);
+    } else if (name=="e-") {
+      // red  
+      colour=G4Colour(1.0, 0.0, 0.0);
+    }
+    else if (name=="e+")
+      // yellow
+      colour=G4Colour(1.0, 1.0, 0.0);
+    else
+      // gray
+      colour=G4Colour(0.5, 0.5, 0.5);
+    
+    // create line with colour
+    G4VisAttributes attribs(colour);
+    G4Polyline polyline;
+    polyline.SetVisAttributes(attribs);
+    
+    // draw line
+    G4Point3D start(fStep->GetPreStepPoint()->GetPosition());
+    G4Point3D end(fStep->GetPostStepPoint()->GetPosition());
+    polyline.push_back(start);
+    polyline.push_back(end);
+    pVVisManager->Draw(polyline);
+  }
+  
+}

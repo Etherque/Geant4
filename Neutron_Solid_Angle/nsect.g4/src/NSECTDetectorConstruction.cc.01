@@ -1,0 +1,399 @@
+#include <math.h>
+
+#include "NSECTDetectorConstruction.hh"
+#include "NSECTDetectorMessenger.hh"
+#include "NSECTMagneticField.hh"
+
+#include "G4Material.hh"
+#include "G4Colour.hh"
+#include "G4VisAttributes.hh"
+#include "G4UnitsTable.hh"
+#include "G4Box.hh"
+#include "G4Orb.hh"
+#include "G4Torus.hh"
+#include "G4PVPlacement.hh"
+#include "G4Transform3D.hh"
+
+#include "G4SDManager.hh"
+#include "G4VVisManager.hh"
+
+#include "G4LogicalVolume.hh"
+#include "G4LogicalVolumeStore.hh"
+#include "G4PhysicalVolumeStore.hh"
+#include "G4SolidStore.hh"
+#include "G4RunManager.hh"
+#include "G4GeometryManager.hh"
+#include "G4SystemOfUnits.hh"
+
+NSECTDetectorConstruction::NSECTDetectorConstruction()
+  :solidWorld(0),  logicWorld(0),  physiWorld(0), 
+   currentRotation(0), currentTranslation(-1)
+{
+  detectorMessenger = new NSECTDetectorMessenger(this);
+}
+
+NSECTDetectorConstruction::~NSECTDetectorConstruction()
+{
+}
+
+G4VPhysicalVolume* NSECTDetectorConstruction::Construct()
+{ 
+  Make_Materials();
+  
+  G4VPhysicalVolume * the_world = Make_World();
+  
+ setTargetPosition(0);
+
+  return(the_world);
+}
+
+void NSECTDetectorConstruction::Make_Materials()
+{
+  G4double a, density;
+  G4int    iz, n, ncomponents;
+  
+  //Iron
+  G4Isotope* Fe54 = new G4Isotope("FE54", iz=26, n=54 , a=53.939614*g/mole);
+  G4Isotope* Fe56 = new G4Isotope("FE56", iz=26, n=56, a=55.934941*g/mole);
+  G4Isotope* Fe57 = new G4Isotope("FE57", iz=26, n=57, a=56.935398*g/mole);
+  
+  G4Element* elFe  = new G4Element("Natural Iron", "Fe",ncomponents=3);
+  elFe->AddIsotope(Fe54, 5.8*perCent);
+  elFe->AddIsotope(Fe56, 91.75*perCent);
+  elFe->AddIsotope(Fe57, 2.45*perCent);
+  
+  Iron = new G4Material("Iron", 7.86*g/cm3, 1);
+  Iron->AddElement(elFe, 100*perCent);
+  
+  // Copper
+  G4Isotope* Cu63 = new G4Isotope("CU63", iz=29, n=63 , a=62.929600*g/mole);
+  G4Isotope* Cu65 = new G4Isotope("CU65", iz=29, n=65, a=64.927793*g/mole);
+  
+  G4Element* elCu  = new G4Element("Natural Copper", "Cu",ncomponents=2);
+  elCu->AddIsotope(Cu63, 69.17*perCent);
+  elCu->AddIsotope(Cu65, 30.83*perCent);
+ 
+  Copper =  new G4Material("Copper", 8.96*g/cm3, 1);
+  Copper->AddElement(elCu, 100*perCent);
+
+  // Air
+  G4Element* elN  = new G4Element("Nitrogen", "N", iz=7, a= 14.01*g/mole);
+  G4Element* elO  = new G4Element("elOxygen"  , "O", iz=8, a= 16.00*g/mole);
+
+  density= 1.29*mg/cm3;
+  ncomponents = 2;
+  Air = new G4Material("Air", density, ncomponents);
+  Air->AddElement(elN, 70*perCent);
+  Air->AddElement(elO, 30*perCent);
+  
+  //CH2
+  G4Element* elC = new G4Element ("elCarbon", "C", iz=6, a= 12.011*g/mole);
+  G4Element* elH = new G4Element("elHydrogen", "H", iz=1, a=1.01*g/mole);
+  
+  density = 0.94*g/cm3;
+  CH2 = new G4Material("CH2",density,ncomponents=2);
+  CH2 ->AddElement(elC, 1);
+  CH2 ->AddElement(elH, 2);
+    
+  //CD2
+  G4Element* elD = new G4Element("elDeuterium", "D", iz=2, a=2.01*g/mole);
+  density = 1.06*g/cm3;
+  CD2 = new G4Material("CH2",density,ncomponents=2);
+  CD2 ->AddElement(elC, 1);
+  CD2 ->AddElement(elD, 2);
+ 
+  //Graphite
+  density = 2.267*g/cm3;
+  Graphite = new G4Material("Graphite",density,ncomponents=1);
+  Graphite ->AddElement(elC, 100*perCent);
+   
+  // Vacuum
+ /*density = universe_mean_density;
+  G4double pressure    = 3.e-18*pascal;
+  G4double temperature = 2.73*kelvin;
+  Vacuum = new G4Material("Vacuum", iz=1, a=1.01*g/mole,density,kStateGas,temperature,pressure);*/
+}
+
+G4VPhysicalVolume * NSECTDetectorConstruction::Make_World()
+{
+  // Clean old geometry when world is remade
+  //
+  G4GeometryManager::GetInstance()->OpenGeometry();
+  G4PhysicalVolumeStore::GetInstance()->Clean();
+  G4LogicalVolumeStore::GetInstance()->Clean();
+  G4SolidStore::GetInstance()->Clean();
+  
+  // 50 cm world
+  G4double HalfWorldLength = 0.5* 1000.0*cm;
+  
+  solidWorld= new G4Box("world", HalfWorldLength, HalfWorldLength, HalfWorldLength);
+  
+  logicWorld= new G4LogicalVolume(solidWorld, Air, "World", 0, 0, 0);
+  
+  physiWorld = new G4PVPlacement(0,               // no rotation
+				 G4ThreeVector(), // at (0,0,0)
+				 logicWorld,      // its logical volume
+				 "World",         // its name
+				 0,               // its mother  volume
+				 false,           // no boolean operations
+				 0);              // no field specific to vol
+  
+  logicWorld->SetVisAttributes (G4VisAttributes::Invisible);
+ 
+  Make_The_N_();
+  Make_Magnetic_Field();
+  Make_Detector();
+
+  return(physiWorld);
+}
+
+void NSECTDetectorConstruction::Make_The_N_()
+{
+  // 60 cm target
+  G4double HalfTargetLength = 0.5* 60.0*cm;
+  
+  solidTarget= new G4Box("target", HalfTargetLength, HalfTargetLength, HalfTargetLength);
+  
+  logicTarget= new G4LogicalVolume(solidTarget, Air, "Target", 0, 0, 0);
+  
+  physiTarget = new G4PVPlacement(0,    // 
+                                  G4ThreeVector(0,0,-75*cm),  // 
+				  logicTarget,     // its logical volume
+				  "Target",        // its name
+				  logicWorld,      // its mother  volume
+				  false,           // no boolean operations
+				  0);              // no field specific to vol
+  
+  logicTarget->SetVisAttributes (G4VisAttributes::Invisible);
+
+  G4double barLength = 20.0 * cm;
+  G4double barWidth  = 1.0 * cm;
+  G4double barHeight = 20.0 *cm;
+  
+  //T2
+  G4double T2_z = -4*cm;//-79.0*cm;
+  //T3
+  G4double T3_z = 0*cm;// -75.0*cm;
+  //T4
+  G4double T4_z = 4*cm;//-71.0*cm;
+  
+  G4Box * solidT2 = new G4Box("Target2", barHeight/2.0, barLength/2.0, barWidth/2.0);
+  
+  G4LogicalVolume * logicT2Volume = new G4LogicalVolume(solidT2, Air, "Target2", 0,0,0);
+  
+  G4Box * solidT3 = new G4Box("Target3", barHeight/2.0, barLength/2.0, barWidth/2.0);
+ 
+  G4LogicalVolume * logicT3Volume = new G4LogicalVolume(solidT3, Air, "Target3", 0,0,0);  
+
+  G4Box * solidT4 = new G4Box("Target4", barHeight/2.0, barLength/2.0, barWidth/2.0);
+  
+  G4LogicalVolume * logicT4Volume = new G4LogicalVolume(solidT4, Air, "Target4", 0,0,0);
+
+  G4ThreeVector    Ta[6];
+  G4RotationMatrix Ra[6];
+  
+  // Target2
+  Ta[0].setX(0.0); Ta[0].setY(0.0); Ta[0].setZ(T2_z);
+  Ra[0].rotateX(0.0); Ra[0].rotateY(0.0); Ra[0].rotateZ(0.0);
+  
+  new G4PVPlacement(G4Transform3D(Ra[0], Ta[0]),
+		    logicT2Volume,
+		    "Targetbar2",
+		    logicTarget,
+		    false,
+		    0);
+  
+   // Target3
+  Ta[2].setX(0.0); Ta[2].setY(0.0); Ta[2].setZ(T3_z);
+  Ra[2].rotateX(0.0*deg); Ra[2].rotateY(0.0); Ra[2].rotateZ(0.0);
+
+  new G4PVPlacement(G4Transform3D(Ra[2], Ta[2]),
+                    logicT3Volume,
+                    "Targetbar3",
+                    logicTarget,
+                    false,
+                    0);
+
+  // Target4
+  Ta[1].setX(0.0); Ta[1].setY(0.0); Ta[1].setZ(T4_z);
+  Ra[1].rotateX(0.0); Ra[1].rotateY(0.0); Ra[1].rotateZ(0.0);
+  
+  new G4PVPlacement(G4Transform3D(Ra[1], Ta[1]),
+		    logicT4Volume,
+		    "Targetbar4",
+		     logicTarget,
+		    false,
+		    0);
+  
+ //color
+  G4VisAttributes* BoxVisAttOrange =  new G4VisAttributes(G4Colour(1.0,0.6,0.0));
+  G4VisAttributes* BoxVisAttGrey   =  new G4VisAttributes(G4Colour(0.5,0.5,0.5));
+  
+  BoxVisAttOrange->SetForceSolid(TRUE);
+  BoxVisAttGrey->SetForceSolid(TRUE);
+  
+  logicT2Volume->SetVisAttributes(BoxVisAttOrange);
+  logicT3Volume->SetVisAttributes(BoxVisAttOrange);
+  logicT4Volume->SetVisAttributes(BoxVisAttOrange);
+
+}
+
+   NSECTMagneticField* NSECTDetectorConstruction::fMagneticField = 0;
+   G4FieldManager* NSECTDetectorConstruction::fFieldMgr = 0;
+
+void NSECTDetectorConstruction::Make_Magnetic_Field()
+{
+   G4double fz = 23.0*cm;
+   G4double fx = 100.0*cm;
+   G4double fy = 18.0*cm;
+
+   G4Box* Unifmagnetic  = new G4Box("MagField",
+                                    fx/2,
+                                    fy/2,
+                                    fz/2);
+               
+  G4LogicalVolume * logicMagnetic = new G4LogicalVolume(Unifmagnetic,
+                                                        Air,
+                                                       "LogicMagnetic");
+  G4ThreeVector    Tm[1];
+  G4RotationMatrix Rm[1];
+
+  Tm[0].setX(0.0); Tm[0].setY(0.0*cm); Tm[0].setZ(0.0);
+  Rm[0].rotateX(0.0); Rm[0].rotateY(0.0); Rm[0].rotateZ(0.0);
+
+  new G4PVPlacement(G4Transform3D(Rm[0], Tm[0]),
+                    logicMagnetic,
+                    "MagneticField",
+                    logicWorld,
+                    false,
+                    0);
+  
+  fMagneticField = new NSECTMagneticField();
+  fFieldMgr = new G4FieldManager();
+  fFieldMgr->SetDetectorField(fMagneticField);
+  fFieldMgr->CreateChordFinder(fMagneticField);
+  G4bool forceToAllDaughters = true;
+  logicMagnetic->SetFieldManager(fFieldMgr, forceToAllDaughters);
+  
+  G4VisAttributes* BoxVisAttCyan = new G4VisAttributes(G4Colour(0.0,1.0,1.0));
+  BoxVisAttCyan->SetForceSolid(TRUE);
+  logicMagnetic->SetVisAttributes(BoxVisAttCyan);
+}
+
+void NSECTDetectorConstruction::Make_Detector()
+{
+  G4double detector_distance = 60*cm;
+  G4double detector_width =  27.6*cm;//8.9*3cm
+  G4double detector_height = 46.0*cm;//8.9*5cm
+  G4double detector_thick = 15.2*cm;
+
+  G4Box* solidDetector
+    = new G4Box("SolidDetector",
+                 detector_width/2,
+                 detector_height/2,
+                 detector_thick/2);
+
+
+  G4LogicalVolume * logicDetector = new G4LogicalVolume(solidDetector,
+                                                        Air,
+                                                        "LogicDetector",
+                                                          0,0,0);
+  G4ThreeVector    Td[3];
+  G4RotationMatrix Rd[3];
+ 
+ //DE
+  Td[0].setX(0.0*cm); Td[0].setY(0.0*cm); Td[0].setZ(94.0*cm);
+  Rd[0].rotateX(0.0); Rd[0].rotateY(0.0); Rd[0].rotateZ(0.0);
+
+  new G4PVPlacement(G4Transform3D(Rd[0], Td[0]),
+                    logicDetector,
+                    "Detector",
+                    logicWorld,
+                    false,
+                    0);
+  
+
+  G4VisAttributes* BoxVisAttMagenta   =  new G4VisAttributes(G4Colour(1.0,0.0,1.0));
+  BoxVisAttMagenta->SetForceSolid(TRUE);
+  logicDetector->SetVisAttributes(BoxVisAttMagenta);
+
+}
+
+// rotates the target volume
+void NSECTDetectorConstruction::setTargetPosition(G4int position)
+{
+/*
+  static G4int previous_position = -1;
+
+  if(position == previous_position)
+    return;
+
+  previous_position = position;
+
+  G4ThreeVector      translationVector;
+  static G4RotationMatrix * rotationMatrix =  0;
+
+  if(!rotationMatrix)
+    rotationMatrix = new G4RotationMatrix; 
+  else {
+    delete rotationMatrix; 
+    rotationMatrix = new G4RotationMatrix; 
+  }
+
+  G4int num_positions = NSECT_NUM_STOPS * NSECT_NUM_ANGLES;
+  
+  if((position < 1) || (position > num_positions)){
+    G4cerr << "Illegal position: " << position << " must be between 1 and " << num_positions << G4endl; 
+    return;
+  }
+  
+  // calculate zero-index rotation and translation
+  G4int new_rotation    = (position-1) / NSECT_NUM_STOPS;
+  G4int new_translation = (position-1) % NSECT_NUM_STOPS;
+  
+  // rotate the N through NUM_ANGLES from 0 to PI
+  // new_rotation values begin at 0
+  G4double step_size = M_PI / NSECT_NUM_ANGLES;
+  G4double current_step =  step_size * new_rotation;
+  
+  rotationMatrix->rotateX(current_step);
+  
+  
+  // translations should vary from 0 to NUM_STOPS
+  // we need to cover the field of view
+  step_size = FOV / NSECT_NUM_STOPS;
+  G4double half_step = step_size / 2;
+  
+  // offset
+  G4double offset = (0 - (FOV/2)) + half_step;
+  current_step =  step_size * new_translation;
+  
+  current_step += offset;
+  
+  translationVector.setY(current_step);
+  
+  // Open geometry for the physical volume to be modified ...
+  //
+  G4GeometryManager * gm = G4GeometryManager::GetInstance();
+  gm->OpenGeometry(physiTarget);
+  
+  // Modify location
+  //
+  physiTarget->SetRotation(rotationMatrix);
+  physiTarget->SetTranslation(translationVector);
+  
+  // Close geometry for the portion modified ...
+  //
+  gm->CloseGeometry(physiTarget);
+  
+  // check that VisManager exists
+  G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
+  
+  if(pVVisManager) {
+    // refresh scene
+    pVVisManager->GeometryHasChanged();
+  }
+  
+  return;*/
+}
+  

@@ -1,0 +1,219 @@
+#include <math.h>
+
+#include "NSECTDetectorConstruction.hh"
+#include "NSECTDetectorMessenger.hh"
+
+#include "G4Material.hh"
+#include "G4Colour.hh"
+#include "G4VisAttributes.hh"
+#include "G4UnitsTable.hh"
+#include "G4Box.hh"
+#include "G4Orb.hh"
+#include "G4Torus.hh"
+#include "G4PVPlacement.hh"
+#include "G4Transform3D.hh"
+
+#include "G4SDManager.hh"
+#include "G4VVisManager.hh"
+
+#include "G4LogicalVolume.hh"
+#include "G4LogicalVolumeStore.hh"
+#include "G4PhysicalVolumeStore.hh"
+#include "G4SolidStore.hh"
+#include "G4RunManager.hh"
+#include "G4GeometryManager.hh"
+
+NSECTDetectorConstruction::NSECTDetectorConstruction()
+  :solidWorld(0),  logicWorld(0),  physiWorld(0), 
+   currentRotation(0), currentTranslation(-1)
+{
+  detectorMessenger = new NSECTDetectorMessenger(this);
+}
+
+NSECTDetectorConstruction::~NSECTDetectorConstruction()
+{
+}
+
+G4VPhysicalVolume* NSECTDetectorConstruction::Construct()
+{ 
+  Make_Materials();
+  
+  G4VPhysicalVolume * the_world = Make_World();
+  
+ setTargetPosition(3);
+
+  return(the_world);
+}
+
+void NSECTDetectorConstruction::Make_Materials()
+{
+  G4double a, density;
+  G4int    iz, n, ncomponents;
+  
+  //Iron
+  G4Isotope* Fe54 = new G4Isotope("FE54", iz=26, n=54 , a=53.939614*g/mole);
+  G4Isotope* Fe56 = new G4Isotope("FE56", iz=26, n=56, a=55.934941*g/mole);
+  G4Isotope* Fe57 = new G4Isotope("FE57", iz=26, n=57, a=56.935398*g/mole);
+  
+  G4Element* elFe  = new G4Element("Natural Iron", "Fe",ncomponents=3);
+  elFe->AddIsotope(Fe54, 5.8*perCent);
+  elFe->AddIsotope(Fe56, 91.75*perCent);
+  elFe->AddIsotope(Fe57, 2.45*perCent);
+  
+  Iron = new G4Material("Iron", 7.86*g/cm3, 1);
+  Iron->AddElement(elFe, 100*perCent);
+  
+  // Copper
+  G4Isotope* Cu63 = new G4Isotope("CU63", iz=29, n=63 , a=62.929600*g/mole);
+  G4Isotope* Cu65 = new G4Isotope("CU65", iz=29, n=65, a=64.927793*g/mole);
+  
+  G4Element* elCu  = new G4Element("Natural Copper", "Cu",ncomponents=2);
+  elCu->AddIsotope(Cu63, 69.17*perCent);
+  elCu->AddIsotope(Cu65, 30.83*perCent);
+ 
+  Copper =  new G4Material("Copper", 8.96*g/cm3, 1);
+  Copper->AddElement(elCu, 100*perCent);
+
+  // Air
+  G4Element* elN  = new G4Element("Nitrogen", "N", iz=7, a= 14.01*g/mole);
+  G4Element* elO  = new G4Element("elOxygen"  , "O", iz=8, a= 16.00*g/mole);
+
+  density= 1.29*mg/cm3;
+  ncomponents = 2;
+  Air = new G4Material("Air", density, ncomponents);
+  Air->AddElement(elN, 70*perCent);
+  Air->AddElement(elO, 30*perCent);
+  
+  // Vacuum
+  density = universe_mean_density;
+  G4double pressure    = 3.e-18*pascal;
+  G4double temperature = 2.73*kelvin;
+  Vacuum = new G4Material("Vacuum", iz=1, a=1.01*g/mole,density,kStateGas,temperature,pressure);  
+}
+
+G4VPhysicalVolume * NSECTDetectorConstruction::Make_World()
+{
+  // Clean old geometry when world is remade
+  //
+  G4GeometryManager::GetInstance()->OpenGeometry();
+  G4PhysicalVolumeStore::GetInstance()->Clean();
+  G4LogicalVolumeStore::GetInstance()->Clean();
+  G4SolidStore::GetInstance()->Clean();
+  
+  // 50 cm world
+  G4double HalfWorldLength = 0.5* 50.0*cm;
+  
+  solidWorld= new G4Box("world", HalfWorldLength, HalfWorldLength, HalfWorldLength);
+  
+  logicWorld= new G4LogicalVolume(solidWorld, Air, "World", 0, 0, 0);
+  
+  physiWorld = new G4PVPlacement(0,               // no rotation
+				 G4ThreeVector(), // at (0,0,0)
+				 logicWorld,      // its logical volume
+				 "World",         // its name
+				 0,               // its mother  volume
+				 false,           // no boolean operations
+				 0);              // no field specific to vol
+  
+  logicWorld->SetVisAttributes (G4VisAttributes::Invisible);
+ 
+  Make_The_N_();
+  
+  return(physiWorld);
+}
+
+void NSECTDetectorConstruction::Make_The_N_()
+{
+  // 10 cm target
+  G4double HalfTargetLength = 0.5* 10.0*cm;
+  
+  solidTarget= new G4Box("target", HalfTargetLength, HalfTargetLength, HalfTargetLength);
+  
+  logicTarget= new G4LogicalVolume(solidTarget, Air, "Target", 0, 0, 0);
+  
+  physiTarget = new G4PVPlacement(0,    // 
+                                  G4ThreeVector(),  // 
+				  logicTarget,     // its logical volume
+				  "Target",        // its name
+				  logicWorld,      // its mother  volume
+				  false,           // no boolean operations
+				  0);              // no field specific to vol
+  
+  logicTarget->SetVisAttributes (G4VisAttributes::Invisible);
+
+  G4double barLength = 6.0 * cm;
+  G4double barWidth  = 0.7 * cm;
+  G4double barHeight = 3.0 * cm;
+  
+  G4Box * solidCuBar = new G4Box("Cu Bar", barHeight/2.0, barLength/2.0, barWidth/2.0);
+  
+  G4LogicalVolume * logicCuVolume = new G4LogicalVolume(solidCuBar, Copper, "Cu Bar", 0,0,0);
+  
+  G4Box * solidFeBar = new G4Box("Fe Bar", barHeight/2.0, barLength/2.0, barWidth/2.0);
+  
+  G4LogicalVolume * logicFeVolume = new G4LogicalVolume(solidFeBar, Iron, "Fe Bar", 0,0,0);
+
+  G4ThreeVector    Ta[4];
+  G4RotationMatrix Ra[4];
+  
+  // 'Left Leg'
+  Ta[0].setX(0.0); Ta[0].setY(0.0); Ta[0].setZ(-1.0*barLength/2 + barWidth/2);
+  Ra[0].rotateX(0.0); Ra[0].rotateY(0.0); Ra[0].rotateZ(0.0);
+  
+  new G4PVPlacement(G4Transform3D(Ra[0], Ta[0]),
+		    logicCuVolume,
+		    "TargLegLeft",
+		    logicTarget,
+		    false,
+		    0);
+  
+  // 'Right Leg'
+  Ta[1].setX(0.0); Ta[1].setY(0.0); Ta[1].setZ(barLength/2 - barWidth/2);
+  Ra[1].rotateX(0.0); Ra[1].rotateY(0.0); Ra[1].rotateZ(0.0);
+  
+  new G4PVPlacement(G4Transform3D(Ra[1], Ta[1]),
+		    logicCuVolume,
+		    "TargLegRight",
+		    logicTarget,
+		    false,
+		    0);
+  
+  
+  // iron diagonal top
+  Ta[2].setX(0.0); Ta[2].setY(0.7*barWidth); Ta[2].setZ(0.0);
+  Ra[2].rotateX(-40.0*deg); Ra[2].rotateY(0.0); Ra[2].rotateZ(0.0);
+  
+  new G4PVPlacement(G4Transform3D(Ra[2], Ta[2]),
+		    logicFeVolume,
+		    "DiagTop",
+		    logicTarget,
+		    false,
+		    0);
+  
+  // iron diagonal bottom
+  Ta[3].setX(0.0); Ta[3].setY(-0.7*barWidth); Ta[3].setZ(0.0);
+  Ra[3].rotateX(-40.0*deg); Ra[3].rotateY(0.0); Ra[3].rotateZ(0.0);
+  
+  new G4PVPlacement(G4Transform3D(Ra[3], Ta[3]),
+		    logicFeVolume,
+		    "DiagBot",
+		    logicTarget,
+		    false,
+		    0);
+  
+  // color
+  G4VisAttributes* BoxVisAttOrange =  new G4VisAttributes(G4Colour(1.0,0.6,0.0));
+  G4VisAttributes* BoxVisAttGrey   =  new G4VisAttributes(G4Colour(0.5,0.5,0.5));
+  
+  BoxVisAttOrange->SetForceSolid(TRUE);
+  BoxVisAttGrey->SetForceSolid(TRUE);
+  
+  logicCuVolume->SetVisAttributes(BoxVisAttOrange);
+  logicFeVolume->SetVisAttributes(BoxVisAttGrey);
+}
+
+// rotates the target volume
+void NSECTDetectorConstruction::setTargetPosition(G4int position)
+{
+
+ }
