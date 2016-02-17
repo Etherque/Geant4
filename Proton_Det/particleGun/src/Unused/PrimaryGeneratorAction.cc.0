@@ -1,0 +1,56 @@
+#include "PrimaryGeneratorAction.hh"
+#include "DetectorConstruction.hh"
+#include "G4UnitsTable.hh"
+
+PrimaryGeneratorAction::PrimaryGeneratorAction()
+{
+  G4int n_particle = 1;
+  particleGun = new G4ParticleGun(n_particle);
+  
+  // default particle  
+  G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
+  G4ParticleDefinition* particle = particleTable->FindParticle("proton");
+
+  G4double momX =  1.0;
+  G4double momY =  0.0;
+  G4double momZ =  0.0;
+  G4double energy = 8.0*MeV;
+  
+  particleGun->SetParticleDefinition(particle);
+  particleGun->SetParticleMomentumDirection(G4ThreeVector(momX ,momY ,momZ));
+  particleGun->SetParticleEnergy(energy);
+  
+  // beam width - step_size = FOV / NUM_STOPS;
+  //G4double step_size = FOV / BRAIN_NUM_STOPS;
+  G4double half_step = 5*cm;
+  
+  x_min =  half_step;
+  x_max = -half_step;
+
+  y_max =  half_step;
+  y_min = -half_step;
+
+  G4cout << "Neutron beam at " << G4BestUnit(energy, "Energy") << "; " << G4BestUnit(half_step, "Length") << " wide." << G4endl;
+}
+
+PrimaryGeneratorAction::~PrimaryGeneratorAction()
+{
+  delete particleGun;
+}
+
+void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
+{   
+  // x and y vary over range
+  G4double positionZ =  x_min + G4UniformRand() * (x_max - x_min);
+  G4double positionY =  y_min + G4UniformRand() * (y_max - y_min);
+  G4double positionX =  -15*cm;
+
+  particleGun->SetParticlePosition(G4ThreeVector(positionX, 
+						 positionY, 
+						 positionZ));
+  
+  particleGun->GeneratePrimaryVertex(anEvent);
+}
+
+
+

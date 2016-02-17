@@ -1,0 +1,303 @@
+
+#include "DetectorConstruction.hh"
+#include "WireChamberParametrization.hh"
+
+#include "G4Box.hh"
+#include "G4LogicalVolume.hh"
+#include "G4PVPlacement.hh"
+#include "G4PVParameterised.hh"
+#include "G4SystemOfUnits.hh"
+#include "G4Material.hh"
+
+// Sensitive Detector Manager
+#include "G4SDManager.hh"
+
+//Silicon Detector sensitive detector class
+#include "SiliconDetectorTrackerSD.hh"
+
+//Wire Chamber sensitive detector class
+#include "WireChamberTrackerSD.hh"
+
+// For defining silicon and helium from the database
+#include "G4NistManager.hh"
+
+
+#include "G4VisAttributes.hh"
+#include "G4Colour.hh"
+
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+DetectorConstruction::DetectorConstruction()
+{
+   fReadFile = "master.gdml";    
+}
+
+DetectorConstruction::~DetectorConstruction()
+{
+}
+
+G4VPhysicalVolume* DetectorConstruction::Construct()
+{
+
+
+// -------    Material definitions ------------- //
+
+   G4double z, a, density, fractionmass;
+   G4int ncomponents;
+   G4Material* Silicon = new G4Material("Silicon", z=14., a=28.0855*g/mole, density=2.330*g/cm3);
+   G4Material* Helium = new G4Material("Helium", z = 2, a=4.001*g/mole, density=0.0001785*g/cm3);
+   
+   G4Element* Cr = new G4Element("Chrome", "Cr", z=25, a=  51.996*g/mole);
+   G4Element* Fe = new G4Element("Iron"  , "Fe", z=26, a=  55.845*g/mole);
+   G4Element* Co = new G4Element("Cobalt", "Co", z=27, a=  58.933*g/mole);
+   G4Element* Ni = new G4Element("Nickel", "Ni", z=28, a=  58.693*g/mole);
+   G4Element* W  = new G4Element("Tungsten","W", z=74, a= 183.850*g/mole);
+   G4Element* H  = new G4Element("Hydrogen","H", z=1, a= 1.01*g/mole);
+   G4Element* C  = new G4Element("Carbon","C", z=6, a= 12.01*g/mole);
+   G4Element* O  = new G4Element("Oxygen","O", z=8, a= 16.00*g/mole);
+   
+   G4Material* Havar = new G4Material("Havar", density= 8.3*g/cm3, ncomponents=5);
+   Havar->AddElement(Cr, fractionmass=0.1785);
+   Havar->AddElement(Fe, fractionmass=0.1822);
+   Havar->AddElement(Co, fractionmass=0.4452);
+   Havar->AddElement(Ni, fractionmass=0.1310);
+   Havar->AddElement(W , fractionmass=0.0631);
+
+   G4Material* Mylar = new G4Material("Mylar", density= 1.38*g/cm3, ncomponents=3);
+   Mylar->AddElement(C,fractionmass=0.6250);
+   Mylar->AddElement(H,fractionmass=0.0417);
+   Mylar->AddElement(O,fractionmass=0.3333);
+
+// ----------- Definitions of all dimensions -------------//
+// Currently unused values commented out to save warnings //
+
+   // Helium world box
+   G4double WorldDimX = 0.8*m, WorldDimY = 0.8*m, WorldDimZ = 0.8*m;
+
+   // Actual wire chamber
+   G4double WireChamberDimX = 0.9*mm, WireChamberDimY=30*cm, WireChamberDimZ = 30*cm;
+
+   // Size of the wire chamber system
+   G4double WireChamberSystemDimX = 10*cm, WireChamberSystemDimY = 50*cm,
+            WireChamberSystemDimZ = 50*cm;
+
+   // Wire chamber frame
+   //G4double WireChamberFrameDimX, WireChamberFrameDimY, WireChamberFrameDimZ;
+
+   // Wire Chamber Mylar sheet
+   /*  G4double MylarSheetDimX = 0.003*mm, 
+            MylarSheetDimY = 30*cm,
+            MylarSheetDimZ = 30*cm;*/
+
+   // Silicon Detector
+   G4double SiliconDetectorDimX = 2.0*mm, 
+            SiliconDetectorDimY = 25*cm, 
+            SiliconDetectorDimZ = 25*cm;//Y=10,z=10
+
+   // Silicon detector mounting plate
+
+  // G4double SiliconDetectorMountingPlateDimX, SiliconDetectorMountingPlateDimY,
+    	//    SiliconDetectorMountingPlateDimZ;
+
+
+// ------------ Definitions of positions ----------------//
+ 
+   // Wire chamber
+   G4double WireChamberPosX =  2*cm, WireChamberPosY = 0*cm, WireChamberPosZ = 0*cm;
+   G4double WireChamberPosX2 = -3.5*cm, WireChamberPosY2 = 0*cm, WireChamberPosZ2 = 0*cm;
+
+   // Silicon detector1
+   G4double SiliconDetectorPosX = 5*cm, SiliconDetectorPosY = 0*cm, 
+            SiliconDetectorPosZ = 0*cm;//x=14cm
+   
+   // Silicon detector2           
+   G4double SiliconDetectorPosX2 = -2*cm, SiliconDetectorPosY2 = 0*cm, 
+            SiliconDetectorPosZ2 = 0*cm;
+
+// ----------- Construct a world box made of helium --------------- //
+   G4Box* solidWorld = new G4Box("world", WorldDimX/2, WorldDimY/2, WorldDimZ/2);
+   G4LogicalVolume* logicWorld = new G4LogicalVolume(solidWorld, Helium, "World", 0, 0, 0);
+   G4PVPlacement* physWorld = new G4PVPlacement(0,
+				  G4ThreeVector(0,0,0),
+				  logicWorld,
+				  "World",
+				  0,
+				  false,
+				  0);
+
+// ----------- Since the world volume cannot contain both replicated volumes and regular volumes,
+// need to create a subworld "Tracker" where I want the first replicated volume to be
+// located. This is made invisible in the world.
+
+  G4Box* solidTracker = new G4Box("tracker", WireChamberSystemDimX,
+					      WireChamberSystemDimY,
+					      WireChamberSystemDimZ);
+					      
+   G4LogicalVolume* logicTracker = new G4LogicalVolume(solidTracker,
+						       Helium,
+						       "Tracker");//Helium
+   
+   /*G4LogicalVolume* logicTracker2 = new G4LogicalVolume(solidTracker,
+						       Helium,
+						       "Tracker");*/
+						       
+   G4PVPlacement* physTracker = new G4PVPlacement(0,
+			                    G4ThreeVector(WireChamberPosX, WireChamberPosY, WireChamberPosZ),
+				                logicTracker,
+				                "Tracker",
+				                logicWorld,
+				                false,
+  				                0);
+  				    
+  /* G4PVPlacement* physTracker2 = new G4PVPlacement(0,
+			                     G4ThreeVector(WireChamberPosX2, WireChamberPosY2, WireChamberPosZ2),
+				                 logicTracker,
+				                 "Tracker",
+				                 logicWorld,
+				                 false,
+  				                 0);*/
+  
+  logicTracker->SetVisAttributes(G4VisAttributes::GetInvisible());						
+
+
+// ----------- Construct the wire chamber solid and logical volumes. Wire chambers are nearly
+// transparent, so I'll make them of helium. These are red. -----------//
+
+   G4int numberOfChambers = 1;
+   G4ThreeVector firstPosition(2*cm, 0*cm, 0*cm);
+   G4double spacingX = 2.5*cm;//1.5
+   G4double chamberWidth = WireChamberDimX;
+
+   G4Box* solidWireChamber = new G4Box("WireChamber", WireChamberDimX, WireChamberDimY, WireChamberDimZ);
+   
+   G4LogicalVolume* logicWireChamber = new G4LogicalVolume(solidWireChamber, Helium, "WireChamber", 0,0,0);//Helium
+
+   WireChamberParam = new WireChamberParametrization(
+				numberOfChambers,
+				G4ThreeVector(0,0,0),
+				spacingX,
+				chamberWidth);
+				
+   /*fWireChamber = new G4PVParameterised(		
+				"WireChamber",
+				logicWireChamber,
+				logicTracker,
+				kXAxis,
+				numberOfChambers,
+				WireChamberParam);*/
+   
+   /*fWireChamber2 = new G4PVParameterised(		
+				"WireChamber",
+				logicWireChamber,
+				logicTracker2,
+				kXAxis,
+				numberOfChambers,
+				WireChamberParam);*/
+					     
+   G4VisAttributes* WireChamberVisAttributes = new G4VisAttributes(G4Colour(1., 0., 1.));
+   WireChamberVisAttributes->SetForceSolid(TRUE);	    
+   logicWireChamber->SetVisAttributes(WireChamberVisAttributes);//wireChamberVisAttributes
+   
+// ---------- Construct Mylar Sheets -------------------------------------------//
+/*   G4int numberOfMylarSheet = 1;
+   //G4ThreeVector firstPosition(2*cm, 0*cm, 0*cm);
+   G4double MylarspaceX = 1.5*cm;//1.5
+   G4double MylarWidth = MylarSheetDimX;
+   
+   G4Box* solidMylarSheet = new G4Box("MylarSheet", MylarSheetDimX, MylarSheetDimY, MylarSheetDimZ);
+   
+   G4LogicalVolume* logicMylarSheet = new G4LogicalVolume(solidMylarSheet, Mylar, "MylarSheet", 0,0,0);
+   
+   MylarParam = new WireChamberParametrization(
+				numberOfMylarSheet,
+				G4ThreeVector(0,0,0),
+				MylarspaceX,
+				MylarWidth);
+   
+   fMylarSheet = new G4PVParameterised(		
+				"MylarSheet",
+				logicMylarSheet,
+				logicTracker,
+				kXAxis,
+				numberOfMylarSheet,
+				MylarParam);
+				
+   G4VisAttributes* MylarSheetVisAttributes = new G4VisAttributes(G4Colour(0., 1., 1.));
+   MylarSheetVisAttributes->SetForceSolid(TRUE);	
+   logicMylarSheet->SetVisAttributes(MylarSheetVisAttributes);
+ */  
+// ---------- Construct the silicon detector and make it gray ------------------//
+
+   
+   G4Box* solidSiliconDetector = new G4Box("siliconDetector", SiliconDetectorDimX,
+				           SiliconDetectorDimY, SiliconDetectorDimZ);
+   
+   /*G4Box* solidSiliconDetector2 = new G4Box("siliconDetector", SiliconDetectorDimX,
+				           SiliconDetectorDimY, SiliconDetectorDimZ);*/				           
+				           
+   G4LogicalVolume* logicSiliconDetector = new G4LogicalVolume(
+					       solidSiliconDetector, 
+					       Silicon,
+					       "SiliconDetector", 
+					       0,0,0);
+					       
+   /*G4LogicalVolume* logicSiliconDetector2 = new G4LogicalVolume(
+					       solidSiliconDetector2, 
+					       Silicon,
+					       "SiliconDetector", 
+					       0,0,0);*/
+					       
+   fSiliconDetector = new G4PVPlacement(0,
+		               G4ThreeVector(SiliconDetectorPosX, SiliconDetectorPosY, SiliconDetectorPosZ),
+					   logicSiliconDetector,
+					       "SiliconDetector",
+						logicWorld,
+						false,
+						0);
+						
+   /*fSiliconDetector2 = new G4PVPlacement(0,
+		              G4ThreeVector(SiliconDetectorPosX2, SiliconDetectorPosY2, SiliconDetectorPosZ2),
+					  logicSiliconDetector2,
+					  "SiliconDetector",
+					  logicWorld,
+					  false,
+						0);*/
+						
+   G4VisAttributes* siliconDetectorVisAttributes = new G4VisAttributes(G4Colour(0.5, 0.5, 0.5));
+   
+   siliconDetectorVisAttributes->SetForceSolid(TRUE);
+   logicSiliconDetector->SetVisAttributes(siliconDetectorVisAttributes);
+  //logicSiliconDetector2->SetVisAttributes(siliconDetectorVisAttributes);
+   
+
+//-------- Define the Sensitive Detector Manager and assign the silicon box to be of type 
+// user-defined SiliconDetector----------------------------------------
+
+   // Define Sensitive Detector Manager
+   G4SDManager* SDman = G4SDManager::GetSDMpointer();
+
+   // Give the Sensitive Detector a name
+   G4String SDname = "SiliconDetector";
+ 
+   SiliconDetectorTrackerSD* SiliconDetectorSD = new SiliconDetectorTrackerSD(SDname);
+
+   // Register the new sensitive detector to SDManager  
+   SDman->AddNewDetector(SiliconDetectorSD);
+
+   // Assign the sensitive detector to the silicon box
+   logicSiliconDetector->SetSensitiveDetector(SiliconDetectorSD);
+
+
+//---------- Define the wire chamber sensitive detector to be of type user-defined
+// WireChamberTrackerSD
+
+    SDname = "WireChamber";
+    WireChamberTrackerSD* WireChamberSD = new WireChamberTrackerSD(SDname);
+    SDman->AddNewDetector(WireChamberSD);
+    logicWireChamber->SetSensitiveDetector(WireChamberSD); 
+   
+
+  return physWorld;
+  
+}

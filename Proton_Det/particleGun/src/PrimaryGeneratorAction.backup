@@ -1,0 +1,343 @@
+
+#include "PrimaryGeneratorAction.hh"
+
+#include "G4Event.hh"
+#include "G4ParticleGun.hh"
+#include "G4ParticleTable.hh"
+#include "G4ParticleDefinition.hh"
+#include "G4PhysicalConstants.hh"
+#include "G4SystemOfUnits.hh"
+#include "Randomize.hh"
+#include "DetectorConstruction.hh"
+#include "G4RunManager.hh"
+
+#define NUMBER_OF_POSSIBLE_THETA 181
+#define NUMBER_OF_POSSIBLE_PSI 360
+
+//include standard C++ tools for opening numeric data files
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <iterator>
+#include <algorithm>
+
+//include math library for making a sine squared distribution for psi
+#include <math.h>
+#define PI 3.1415926535
+
+using namespace std;
+int thetaArraySize;
+int psiArraySize;
+
+PrimaryGeneratorAction::PrimaryGeneratorAction()
+{    
+  G4int n_particle = 1;
+  particleGun  = new G4ParticleGun(n_particle);
+    
+  G4ParticleDefinition* particle
+           = G4ParticleTable::GetParticleTable()->FindParticle("proton");
+  particleGun->SetParticleDefinition(particle);
+        
+  // Give the particle some default parameters that are changed later in 
+  // GeneratePrimaries()
+
+  particleGun->SetParticlePosition(G4ThreeVector(0., 0., 0.));
+  particleGun->SetParticleMomentumDirection(G4ThreeVector(0.,0.,1.));
+  particleGun->SetParticleEnergy(6*MeV);  
+
+  // Get the angular and energy distributions ready
+
+  InitTheta();
+  InitPsi();
+  InitEnergy();
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+PrimaryGeneratorAction::~PrimaryGeneratorAction()
+{
+   ofstream OutputFile("ParticleInitialInfo.txt");
+   OutputFile << "Initial Pos R" << "\t" << "Initial Pos Z" << "\t"
+              << "Initial Pos angle" << "\t" << "Initial Dir Theta" 
+              << "\t" << "Initial Dir Phi" << "\t" << "Initial energy" 
+              << G4endl;
+
+   for (G4int i = 0; i < particleInitialPosR.size(); i++)
+   {
+       OutputFile << particleInitialPosR[i] << setprecision(3) << "\t\t"
+                  << particleInitialPosZ[i] << setprecision(3) << "\t\t"
+		  << particleInitialPosTheta[i] << setprecision(3) << "\t\t"
+                  << particleInitialDirTheta[i] << setprecision(3) << "\t\t"
+		  << particleInitialDirPhi[i] << setprecision(3) << "\t\t"
+		  << particleInitialEnergy[i] << setprecision(3) << G4endl;
+   }
+
+   ofstream EnergyOutputFile("debugEnergy.txt");
+   for (G4int i = 0; i < particleInitialEnergy.size(); i++)
+       EnergyOutputFile << particleInitialEnergy[i] << G4endl;
+
+   delete particleGun;
+}  
+
+
+
+void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
+{  
+
+  theta = ThetaRejectAccept(); 
+  psi = PsiRejectAccept();
+
+  G4double energy = EnergyRejectAccept(theta);
+
+
+  // Set the initial direction of propagation 
+
+  G4double cosTheta = std::cos(theta);
+  G4double sinTheta = std::sqrt(1. - cosTheta*cosTheta);  
+  G4ThreeVector dir(sinTheta*std::cos(psi),sinTheta*std::sin(psi),cosTheta);
+  particleGun->SetParticleMomentumDirection(dir);
+
+  // Set energy
+  
+  particleGun->SetParticleEnergy(energy);
+
+  // Set initial position to a random position within the target volume
+
+  G4double radiusOfTargetVolume = 3.25*mm, lengthOfTargetVolume = 10*cm;
+
+  G4double pParticleRadius = G4UniformRand() * radiusOfTargetVolume;
+  G4double pParticleZ = G4UniformRand() * lengthOfTargetVolume;
+  G4double pParticleAngle = G4UniformRand() * twopi;
+
+  G4ThreeVector InitialPos(pParticleRadius * std::cos(pParticleAngle),
+			   pParticleRadius * std::sin(pParticleAngle),
+ 			   pParticleZ);
+
+  particleGun->SetParticlePosition(InitialPos);  
+  
+  particleInitialPosR.push_back(pParticleRadius);
+  particleInitialPosZ.push_back(pParticleZ);
+  particleInitialPosTheta.push_back(pParticleAngle);
+
+  particleInitialDirTheta.push_back(theta);
+  particleInitialDirPhi.push_back(psi);
+  particleInitialEnergy.push_back(energy);
+
+  //create vertex
+  //   
+  particleGun->GeneratePrimaryVertex(anEvent);
+}
+
+
+
+void PrimaryGeneratorAction::InitTheta()
+{
+  // tabulated function 
+  // f is assumed positive, linear per segment, continuous
+  //
+
+  //uses vectors of G4double thetaArray and thetaPDF, defined as private variables in the header
+  //file
+  //Initialize possible theta values to integers between 0 and 180
+  for (int i = 0; i <= NUMBER_OF_POSSIBLE_THETA; i++) thetaArray.push_back(i);
+
+
+  //Set thetaPDF values
+  ifstream thetaFile("thetaFile.txt");	
+  string input;  
+  if (thetaFile.is_open())
+  {
+	while (getline(thetaFile, input)) thetaPDF.push_back(atof(input.c_str()));
+  }
+
+  thetaArraySize = thetaPDF.size();
+	
+  //set thetaMax for RejectAccept
+  thetaMax = 0.;
+  for (G4int j=0; j < thetaArraySize; j++) 
+  {
+     if (thetaMax < thetaPDF[j]) thetaMax = thetaPDF[j];
+  };
+     
+  //compute slopes
+  //
+  thetaSlope.resize(thetaArraySize);
+  for (G4int j=0; j< thetaArraySize-1; j++) 
+  { 
+    thetaSlope[j] = (thetaPDF[j+1] - thetaPDF[j])/(thetaArray[j+1] - thetaArray[j]);
+  };
+  
+  Fc.resize(thetaArraySize);  
+  Fc[0] = 0.;
+  for (G4int j=1; j<thetaArraySize; j++) {
+    Fc[j] = Fc[j-1] + 0.5*(thetaPDF[j] + thetaPDF[j-1])*(thetaArray[j] - thetaArray[j-1]);
+  };    
+}
+
+void PrimaryGeneratorAction::InitPsi()
+{
+      //initialize psiPDF to a sin squared distribution
+   double currentValue;
+   for (G4int j = 0; j <= NUMBER_OF_POSSIBLE_PSI; j++)
+   {
+	currentValue = sin(j * 180/PI);
+	psiPDF.push_back(currentValue * currentValue);
+   } 
+
+   //uses G4double vectors psi and psiPDF, defined as private variables
+   //in header file
+   for (G4int i = 0; i <= NUMBER_OF_POSSIBLE_PSI; i++) psiArray.push_back(i);
+
+   //set psiMax for RejectAccept
+   psiMax = 0.;
+   for (G4int k=0; k < NUMBER_OF_POSSIBLE_PSI; k++) 
+   {
+       if (psiMax < psiPDF[k]) psiMax = psiPDF[k];
+   }; 
+  
+   //set the slopes
+   psiSlope.resize(NUMBER_OF_POSSIBLE_PSI);
+   for (G4int j = 0; j < NUMBER_OF_POSSIBLE_PSI - 1; j++) 
+   { 
+     psiSlope[j] = (psiPDF[j+1] - psiPDF[j])/(psiArray[j+1] - psiArray[j]);
+   };
+}
+
+void PrimaryGeneratorAction::InitEnergy()
+{
+   //Set increments for possible energies, defined in energyArray
+   //Uses private variables maxEnergy, energyIncrement, energyArray, energyPDF, energySlope,
+   //defined in the header file
+   sizeOfEnergyArray = 1500;
+   for (G4double i = 0; i < sizeOfEnergyArray; i+=0.004)
+   {
+        energyArray.push_back(i);
+   }
+   //load the large 2D histogram file
+   ifstream dataFile("exported_DCS_interp.txt");
+
+   //put the 2D file into an array of vectors
+   string input;
+
+   for (int i = 0; i < 180; i++)
+   {
+	while (getline(dataFile, input))
+	{
+	   vector<G4double> energyRow;
+	   istringstream in(input);
+	   copy(istream_iterator<G4double>(in), istream_iterator<G4double>(), back_inserter(energyRow));
+           energyPDF.push_back(energyRow);
+	}
+   }
+
+   //Then, put the right values in all the energySlope vectors
+   for (int i = 0; i < 180; i++)
+   {
+	vector<G4double> energySlopeRow;
+	for (int j = 0; j < 1500; j++)
+	{
+	    energySlopeRow.push_back( (energyPDF[i][j+1] - energyPDF[i][j]) / (energyArray[j+1] - energyArray[j]) );
+	}
+	energySlope.push_back(energySlopeRow);
+   }
+
+   //Initialize all the energyMax
+   for (int i = 0; i < 180; i++)
+   {
+	for (int j = 0; j < sizeOfEnergyArray; j++)
+	{
+	   if (energyMax[i] < energyPDF[i][j]) energyMax[i] = energyPDF[i][j];
+	}
+   }
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+G4double PrimaryGeneratorAction::ThetaRejectAccept()
+{
+  // tabulated function 
+  // f is assumed positive, linear per segment, continuous
+  //  
+  G4double x_rndm = 0., y_rndm = 0., f_inter = -1.;
+  
+  while (y_rndm > f_inter) {
+    //choose a point randomly
+    x_rndm = thetaArray[0] + G4UniformRand()*(thetaArray[thetaArraySize-1] - thetaArray[0]);
+    y_rndm = G4UniformRand()*thetaMax;
+    //find bin
+    G4int j = thetaArraySize - 2;
+    while ((thetaArray[j] > x_rndm) && (j > 0)) j--;
+    //compute f(x_rndm) by linear interpolation
+    f_inter = thetaPDF[j] + thetaSlope[j]*(x_rndm - thetaArray[j]);
+  };
+  return x_rndm;
+}
+
+G4double PrimaryGeneratorAction::PsiRejectAccept()
+{
+   G4double x_rndm = 0., y_rndm = 0., f_inter = -1.;
+  
+   while (y_rndm > f_inter) 
+   {
+     //choose a point randomly
+     x_rndm = psiArray[0] + G4UniformRand()*(psiArray[NUMBER_OF_POSSIBLE_PSI-1] - psiArray[0]);
+     y_rndm = G4UniformRand()*psiMax;
+     //find bin
+     G4int j = NUMBER_OF_POSSIBLE_PSI - 2;
+     while ((psiArray[j] > x_rndm) && (j > 0)) j--;
+     //compute f(x_rndm) by linear interpolation
+     f_inter = psiPDF[j] + psiSlope[j]*(x_rndm - psiArray[j]);
+   };
+   return x_rndm; 
+}
+
+G4double PrimaryGeneratorAction::EnergyRejectAccept(G4double theta)
+{
+   G4int roundedTheta = (G4int) theta;
+   
+   G4double x_rndm = 0., y_rndm = 0., f_inter = -1.;
+  
+   while (y_rndm > f_inter) 
+   {
+       //choose a point randomly
+       x_rndm = energyArray[0] + G4UniformRand()*(energyArray[sizeOfEnergyArray - 1] - energyArray[0]);
+       y_rndm = G4UniformRand()*energyMax[roundedTheta];
+       //find bin
+       G4int j = sizeOfEnergyArray - 2;
+       while ((energyArray[j] > x_rndm) && (j > 0)) j--;
+       //compute f(x_rndm) by linear interpolation
+       f_inter = energyPDF[roundedTheta][j] + energySlope[roundedTheta][j]*(x_rndm - energyArray[j]);
+   };
+   return x_rndm;
+}
+
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+G4double PrimaryGeneratorAction::InverseCumul()
+{
+  // tabulated function
+  // f is assumed positive, linear per segment, continuous 
+  // --> cumulative function is second order polynomial
+  
+  //choose y randomly
+  G4double y_rndm = G4UniformRand()*Fc[thetaArraySize-1];
+  //find bin
+  G4int j = thetaArraySize-2;
+  while ((Fc[j] > y_rndm) && (j > 0)) j--;
+  //y_rndm --> x_rndm :  Fc(x) is second order polynomial
+  G4double x_rndm = thetaArray[j];
+  G4double aa = thetaSlope[j];
+  if (aa != 0.) {
+    G4double b = thetaPDF[j]/aa, c = 2*(y_rndm - Fc[j])/aa;
+    G4double delta = b*b + c;
+    G4int sign = 1; if (aa < 0.) sign = -1;
+    x_rndm += sign*std::sqrt(delta) - b;    
+  } else if (thetaPDF[j] > 0.) {
+    x_rndm += (y_rndm - Fc[j])/thetaPDF[j];
+  };
+  return x_rndm;
+}
+
+

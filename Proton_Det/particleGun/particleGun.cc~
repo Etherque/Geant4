@@ -1,0 +1,110 @@
+
+
+#include "G4RunManager.hh"
+#include "G4UImanager.hh"
+#include "Randomize.hh"
+
+#include "DetectorConstruction.hh"
+#include "PhysicsList.hh"
+#include "PrimaryGeneratorAction.hh"
+#include "RunAction.hh"
+#include "EventAction.hh"
+#include "SteppingAction.hh"
+#include "HistoManager.hh"
+
+#ifdef G4VIS_USE
+#include "G4VisExecutive.hh"
+#endif
+
+#ifdef G4UI_USE
+#include "G4UIExecutive.hh"
+#endif
+
+#include "G4GDMLParser.hh"
+
+int main(int argc,char** argv) {
+
+  //choose the Random engine
+  CLHEP::HepRandom::setTheEngine(new CLHEP::RanecuEngine);
+
+  // Construct the default run manager
+  G4RunManager * runManager = new G4RunManager;
+
+  // set mandatory initialization classes
+  //
+  DetectorConstruction* detector = new DetectorConstruction;
+  runManager->SetUserInitialization(detector);
+  runManager->SetUserInitialization(new PhysicsList);
+      
+  // set user action classes
+
+  // HistoManager provides the fill, save, and book functions that
+  // EventAction and RunAction will call to make histograms. Currently
+  // it just outputs total energy deposited in the detectors.
+  HistoManager* histo = new HistoManager();  
+
+  // RunAction books (initializes) the histograms at the beginning of the run
+  // and saves them at the end of the run.
+  RunAction* run = new RunAction(histo);
+
+  // PrimaryGeneratorAction makes a new event (new particle generated) 
+  // using particleGun and gives it the appropriate energy and angle distributions.
+  PrimaryGeneratorAction* prim = new PrimaryGeneratorAction();
+
+  // EventAction fills the histogram at the end of every event, meaning
+  // every time a particle has had its fun and is deleted.
+  EventAction* event_action = new EventAction(run, histo);
+
+  // SteppingAction collects energy deposition when a particle is passing
+  // through a physical volume.
+  SteppingAction* stepping_action = new SteppingAction(detector, event_action);
+        
+  runManager->SetUserAction(run);
+  runManager->SetUserAction(prim);  
+  runManager->SetUserAction(event_action);
+  runManager->SetUserAction(stepping_action);
+    
+  //Initialize G4 kernel
+  runManager->Initialize();
+    
+  // get the pointer to the User Interface manager 
+    G4UImanager* UI = G4UImanager::GetUIpointer();  
+
+#ifdef G4VIS_USE
+     G4VisManager* visManager = new G4VisExecutive;
+     visManager->Initialize();
+#endif
+
+  if (argc==4)   // batch mode  
+    { 
+     G4String command = "/control/execute ";
+     G4String fileName = argv[1];
+     UI->ApplyCommand(command+fileName);  
+    }
+    
+  else           // define visualization and UI terminal for interactive mode 
+    { 
+#ifdef G4UI_USE
+     G4UIExecutive * ui = new G4UIExecutive(argc,argv);      
+#ifdef G4VIS_USE
+     UI->ApplyCommand("/control/execute vis.mac");          
+#endif
+     ui->SessionStart();
+     delete ui;
+#endif
+     
+#ifdef G4VIS_USE
+     delete visManager;
+#endif     
+    }
+
+  // job termination
+  //
+  delete histo;  
+  delete runManager;
+
+  return 0;
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo..... 
+
